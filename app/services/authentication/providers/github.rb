@@ -3,8 +3,6 @@ module Authentication
     # GitHub authentication provider, uses omniauth-github as backend
     class Github < Provider
       OFFICIAL_NAME = "GitHub".freeze
-      CREATED_AT_FIELD = "github_created_at".freeze
-      USERNAME_FIELD = "github_username".freeze
       SETTINGS_URL = "https://github.com/settings/applications".freeze
 
       def new_user_data
@@ -15,7 +13,7 @@ module Authentication
           github_created_at: raw_info.created_at,
           github_username: info.nickname,
           name: name,
-          remote_profile_image_url: info.image.to_s
+          remote_profile_image_url: Users::SafeRemoteProfileImageUrl.call(info.image.to_s)
         }
       end
 
@@ -26,14 +24,6 @@ module Authentication
         }
       end
 
-      def self.user_created_at_field
-        CREATED_AT_FIELD
-      end
-
-      def self.user_username_field
-        USERNAME_FIELD
-      end
-
       def self.official_name
         OFFICIAL_NAME
       end
@@ -42,10 +32,10 @@ module Authentication
         SETTINGS_URL
       end
 
-      def self.sign_in_path(params = {})
+      def self.sign_in_path(**kwargs)
         ::Authentication::Paths.sign_in_path(
           provider_name,
-          params,
+          **kwargs,
         )
       end
 

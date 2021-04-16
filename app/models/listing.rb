@@ -4,20 +4,21 @@ class Listing < ApplicationRecord
   self.table_name = "classified_listings"
 
   include Searchable
+  include PgSearch::Model
 
   SEARCH_SERIALIZER = Search::ListingSerializer
   SEARCH_CLASS = Search::Listing
 
   attr_accessor :action
 
-  # Note: categories were hardcoded at first and the model was only added later.
+  # NOTE: categories were hardcoded at first and the model was only added later.
   # The foreign_key and inverse_of options are used because of legacy table names.
   belongs_to :listing_category, inverse_of: :listings, foreign_key: :classified_listing_category_id
   belongs_to :user
   belongs_to :organization, optional: true
+  before_validation :modify_inputs
   before_save :evaluate_markdown
   before_create :create_slug
-  before_validation :modify_inputs
   after_commit :index_to_elasticsearch, on: %i[create update]
   after_commit :remove_from_elasticsearch, on: [:destroy]
   acts_as_taggable_on :tags
@@ -32,9 +33,15 @@ class Listing < ApplicationRecord
   validate :restrict_markdown_input
   validate :validate_tags
 
+  # [@atsmith813] this is adapted from the `listing_search` property in
+  # `config/elasticsearch/mappings/listings.json`
+  pg_search_scope :search_listings,
+                  against: %i[body_markdown cached_tag_list location slug title],
+                  using: { tsearch: { prefix: true } }
+
   scope :published, -> { where(published: true) }
 
-  # Note: we still need to use the old column name for the join query
+  # NOTE: we still need to use the old column name for the join query
   scope :in_category, lambda { |slug|
     joins(:listing_category).where("classified_listing_categories.slug" => slug)
   }
@@ -69,7 +76,7 @@ class Listing < ApplicationRecord
   private
 
   def evaluate_markdown
-    self.processed_html = MarkdownParser.new(body_markdown).evaluate_listings_markdown
+    self.processed_html = MarkdownProcessor::Parser.new(body_markdown).evaluate_listings_markdown
   end
 
   def modify_inputs

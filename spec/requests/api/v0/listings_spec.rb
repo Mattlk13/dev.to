@@ -1,10 +1,10 @@
 require "rails_helper"
 
 RSpec.describe "Api::V0::Listings", type: :request do
-  let_it_be_readonly(:cfp_category) do
+  let(:cfp_category) do
     create(:listing_category, :cfp)
   end
-  let_it_be_readonly(:edu_category) do
+  let(:edu_category) do
     create(:listing_category)
   end
 
@@ -84,6 +84,7 @@ RSpec.describe "Api::V0::Listings", type: :request do
       get api_listings_path
 
       expect(response.headers["cache-control"]).to be_present
+      expect(response.headers["x-accel-expires"]).to be_present
       expect(response.headers["surrogate-control"]).to match(/max-age/).and(match(/stale-if-error/))
     end
 
@@ -155,7 +156,7 @@ RSpec.describe "Api::V0::Listings", type: :request do
     end
 
     context "when unauthorized" do
-      let_it_be_readonly(:headers) { { "api-key" => "invalid api key" } }
+      let(:headers) { { "api-key" => "invalid api key" } }
 
       it "returns a published listing" do
         listing.update(published: true)
@@ -214,6 +215,7 @@ RSpec.describe "Api::V0::Listings", type: :request do
       get api_listing_path(listing.id)
 
       expect(response.headers["cache-control"]).to be_present
+      expect(response.headers["x-accel-expires"]).to be_present
       expect(response.headers["surrogate-control"]).to match(/max-age/).and(match(/stale-if-error/))
     end
 
@@ -250,7 +252,7 @@ RSpec.describe "Api::V0::Listings", type: :request do
       include_context "when param list is valid"
 
       it "fails to create a listing if user does not have enough credit" do
-        post_listing(listing_params)
+        post_listing(**listing_params)
         expect(response).to have_http_status(:payment_required)
       end
 
@@ -282,7 +284,7 @@ RSpec.describe "Api::V0::Listings", type: :request do
       end
 
       it "fails if body_markdown is missing" do
-        post_listing(invalid_params)
+        post_listing(**invalid_params)
         expect(response).to have_http_status(:unprocessable_entity)
       end
 
@@ -294,13 +296,13 @@ RSpec.describe "Api::V0::Listings", type: :request do
       it "fails if category is invalid" do
         post_listing(title: "Title", body_markdown: "body", category: "unknown")
         expect(response).to have_http_status(:unprocessable_entity)
-        expect(response.parsed_body.dig("errors", "listing_category").first).
-          to match(/must exist/)
+        expect(response.parsed_body.dig("errors", "listing_category").first)
+          .to match(/must exist/)
       end
 
       it "does not subtract credits or create a listing if the listing is not valid" do
         expect do
-          post_listing(invalid_params)
+          post_listing(**invalid_params)
         end.to change(Listing, :count).by(0).and change(user.credits.spent, :size).by(0)
       end
     end
@@ -311,7 +313,7 @@ RSpec.describe "Api::V0::Listings", type: :request do
       include_context "when user has enough credit"
 
       it "properly deducts the amount of credits" do
-        post_listing(listing_params)
+        post_listing(**listing_params)
         expect(response).to have_http_status(:created)
 
         expect(user.credits.spent.size).to eq(cfp_category.cost)
@@ -328,14 +330,14 @@ RSpec.describe "Api::V0::Listings", type: :request do
       it "creates a listing under the org" do
         org = user_admin_organization(user)
         Credit.create(organization_id: org.id)
-        post_listing(listing_params.merge(organization_id: org.id))
+        post_listing(**listing_params.merge(organization_id: org.id))
         expect(Listing.first.organization_id).to eq org.id
       end
 
       it "does not create a listing draft for an org not belonging to the user" do
         org = create(:organization)
         expect do
-          post_listing(draft_params.merge(organization_id: org.id))
+          post_listing(**draft_params.merge(organization_id: org.id))
           expect(response).to have_http_status(:unauthorized)
         end.to change(Listing, :count).by(0)
       end
@@ -343,13 +345,13 @@ RSpec.describe "Api::V0::Listings", type: :request do
       it "does not create a listing for an org not belonging to the user" do
         org = create(:organization)
         expect do
-          post_listing(listing_params.merge(organization_id: org.id))
+          post_listing(**listing_params.merge(organization_id: org.id))
           expect(response).to have_http_status(:unauthorized)
         end.to change(Listing, :count).by(0)
       end
 
       it "assigns the spent credits to the listing" do
-        post_listing(listing_params)
+        post_listing(**listing_params)
         spent_credit = user.credits.spent.last
         expect(spent_credit.purchase_type).to eq("Listing")
         expect(spent_credit.spent_at).not_to be_nil
@@ -357,31 +359,31 @@ RSpec.describe "Api::V0::Listings", type: :request do
 
       it "cannot create a draft due to internal error" do
         allow(Organization).to receive(:find_by)
-        post_listing(draft_params.except(:category))
-        expect(response.parsed_body.dig("errors", "listing_category").first).
-          to match(/must exist/)
+        post_listing(**draft_params.except(:category))
+        expect(response.parsed_body.dig("errors", "listing_category").first)
+          .to match(/must exist/)
         expect(response).to have_http_status(:unprocessable_entity)
       end
 
       it "creates listing draft and does not subtract credits" do
         allow(Credits::Buyer).to receive(:call).and_raise(ActiveRecord::Rollback)
         expect do
-          post_listing(draft_params)
-        end.to change(Listing, :count).by(1).
-          and change(user.credits.spent, :size).by(0)
+          post_listing(**draft_params)
+        end.to change(Listing, :count).by(1)
+          .and change(user.credits.spent, :size).by(0)
       end
 
       it "does not create a listing or subtract credits if the purchase does not go through" do
         allow(Credits::Buyer).to receive(:call).and_raise(ActiveRecord::Rollback)
         expect do
-          post_listing(listing_params)
-        end.to change(Listing, :count).by(0).
-          and change(user.credits.spent, :size).by(0)
+          post_listing(**listing_params)
+        end.to change(Listing, :count).by(0)
+          .and change(user.credits.spent, :size).by(0)
       end
 
       it "creates a listing belonging to the user" do
         expect do
-          post_listing(listing_params)
+          post_listing(**listing_params)
           expect(response).to have_http_status(:created)
         end.to change(Listing, :count).by(1)
         expect(Listing.find(response.parsed_body["id"]).user).to eq(user)
@@ -389,7 +391,7 @@ RSpec.describe "Api::V0::Listings", type: :request do
 
       it "creates a listing with a title, a body markdown, a category" do
         expect do
-          post_listing(listing_params)
+          post_listing(**listing_params)
           expect(response).to have_http_status(:created)
         end.to change(Listing, :count).by(1)
 
@@ -403,7 +405,7 @@ RSpec.describe "Api::V0::Listings", type: :request do
       it "creates a listing with a location" do
         params = listing_params.merge(location: "Frejus")
         expect do
-          post_listing(params)
+          post_listing(**params)
           expect(response).to have_http_status(:created)
         end.to change(Listing, :count).by(1)
         expect(Listing.find(response.parsed_body["id"]).location).to eq("Frejus")
@@ -412,7 +414,7 @@ RSpec.describe "Api::V0::Listings", type: :request do
       it "creates a listing with a list of tags and a contact" do
         params = listing_params.merge(tags: %w[discuss javascript], contact_via_connect: true)
         expect do
-          post_listing(params)
+          post_listing(**params)
           expect(response).to have_http_status(:created)
         end.to change(Listing, :count).by(1)
 
@@ -610,8 +612,8 @@ RSpec.describe "Api::V0::Listings", type: :request do
         max_id = ListingCategory.maximum(:id)
         put_listing(listing.id, title: "New title", listing_category_id: max_id + 1)
         expect(response).to have_http_status(:unprocessable_entity)
-        expect(response.parsed_body.dig("errors", "listing_category").first).
-          to match(/must exist/)
+        expect(response.parsed_body.dig("errors", "listing_category").first)
+          .to match(/must exist/)
       end
 
       it "updates the title of his listing" do

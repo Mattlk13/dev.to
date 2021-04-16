@@ -1,16 +1,17 @@
 class Role < ApplicationRecord
   ROLES = %w[
     admin
-    banned
     chatroom_beta_tester
-    comment_banned
+    codeland_admin
+    comment_suspended
+    mod_relations_admin
     podcast_admin
-    pro
     restricted_liquid_tag
     single_resource_admin
     super_admin
+    support_admin
+    suspended
     tag_moderator
-    mod_relations_admin
     tech_admin
     trusted
     warned
@@ -30,4 +31,13 @@ class Role < ApplicationRecord
             inclusion: { in: ROLES }
 
   scopify
+
+  # Returns a somewhat friendly name for the resource related to a given role.
+  # In the case of Tag Moderators, a resource_type is not present, so we use the
+  # resource_id to grab the specific Tag related to that moderator's role.
+  def resource_name
+    return resource_type unless resource_id
+
+    Tag.find(resource_id).name
+  end
 end

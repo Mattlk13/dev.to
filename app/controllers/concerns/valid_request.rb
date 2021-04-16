@@ -25,10 +25,10 @@ module ValidRequest
     # In this case we make sure the redirect ends in the app protocol.
     # This is the same as the base Rails method except URL.protocol
     # is used instead of request.protocol.
-    when /\A([a-z][a-z\d\-+.]*:|\/\/).*/i
+    when %r{\A([a-z][a-z\d\-+.]*:|//).*}i
       options
     when String
-      "#{(URL.protocol || request.protocol)}#{request.host_with_port}#{options}"
+      "#{URL.protocol || request.protocol}#{request.host_with_port}#{options}"
     when Proc
       _compute_redirect_to_location request, instance_eval(&options)
     else

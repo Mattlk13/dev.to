@@ -1,64 +1,51 @@
 import { h } from 'preact';
 import { render } from '@testing-library/preact';
+import fetch from 'jest-fetch-mock';
 import { axe } from 'jest-axe';
-import RequestManager from '../requestManager';
+import { beforeEach } from '@jest/globals';
+import { RequestManager } from '../RequestManager/RequestManager';
+import '@testing-library/jest-dom';
 
-const data = [
-  {
-    id: 2,
-    channel_name: 'ironman',
-  },
-];
+function getData() {
+  const data = [
+    {
+      resource: {},
+    },
+  ];
 
+  return data;
+}
+
+// TODO: There needs to be some better tests in here in regards to different data: empty, some data etc.
 describe('<RequestManager />', () => {
+  beforeEach(() => {
+    const csrfToken = 'this-is-a-csrf-token';
+
+    window.fetch = fetch;
+    window.getCsrfToken = async () => csrfToken;
+
+    fetch.mockResponse(
+      JSON.stringify({
+        result: { user_joining_requests: [], channel_joining_memberships: [] },
+      }),
+    );
+  });
+
   it('should have no a11y violations', async () => {
     const { container } = render(
-      <RequestManager
-        resource={data}
-        handleRequestRejection={jest.fn()}
-        handleRequestApproval={jest.fn()}
-      />,
+      <RequestManager resource={getData()} updateRequestCount={jest.fn()} />,
     );
+
     const results = await axe(container);
+
     expect(results).toHaveNoViolations();
   });
 
   it('should have the proper elements', () => {
-    const { getByTestId, getByText } = render(
-      <RequestManager
-        resource={data}
-        handleRequestRejection={jest.fn()}
-        handleRequestApproval={jest.fn()}
-      />,
-    );
-
-    getByText(/Joining Request/i);
-    getByText(/Manage request coming to all the channels/i);
-    const request = getByTestId('request');
-    expect(request.textContent).toContain('Reject');
-    expect(request.textContent).toContain('Accept');
-  });
-
-  it('should call the relavant handlers when the buttons are clicked', async () => {
-    const handleRequestRejection = jest.fn();
-    const handleRequestApproval = jest.fn();
-
     const { getByText } = render(
-      <RequestManager
-        resource={data}
-        handleRequestRejection={handleRequestRejection}
-        handleRequestApproval={handleRequestApproval}
-      />,
+      <RequestManager resource={getData()} updateRequestCount={jest.fn()} />,
     );
-    const rejectButton = getByText(/reject/i);
-    const acceptButton = getByText(/accept/i);
 
-    rejectButton.click();
-
-    expect(handleRequestRejection).toHaveBeenCalledTimes(1);
-
-    acceptButton.click();
-
-    expect(handleRequestApproval).toHaveBeenCalledTimes(1);
+    expect(getByText('You have no pending invitations.')).toBeInTheDocument();
   });
 });

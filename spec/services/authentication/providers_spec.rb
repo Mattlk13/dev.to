@@ -9,7 +9,7 @@ RSpec.describe Authentication::Providers, type: :service do
     end
 
     it "raises an exception if a provider is available but not enabled" do
-      allow(SiteConfig).to receive(:authentication_providers).and_return(%w[github])
+      allow(Settings::Authentication).to receive(:providers).and_return(%w[github])
 
       expect do
         described_class.get!(:twitter)
@@ -17,6 +17,8 @@ RSpec.describe Authentication::Providers, type: :service do
     end
 
     it "loads the correct provider class" do
+      allow(Settings::Authentication).to receive(:providers).and_return(described_class.available)
+
       is_subclass_of = (
         described_class.get!(:twitter) < Authentication::Providers::Provider
       )
@@ -26,19 +28,15 @@ RSpec.describe Authentication::Providers, type: :service do
 
   describe ".available" do
     it "lists the available providers" do
-      available_providers = %i[github twitter]
+      available_providers = %i[apple facebook github twitter]
       expect(described_class.available).to eq(available_providers)
     end
   end
 
   describe ".enabled" do
-    it "lists all available providers" do
-      expect(described_class.available).to eq(described_class.enabled)
-    end
-
     context "when one of the available providers is disabled" do
       it "only lists those that remain enabled" do
-        allow(SiteConfig).to receive(:authentication_providers).and_return(%w[github])
+        allow(Settings::Authentication).to receive(:providers).and_return(%w[github])
 
         expect(described_class.enabled).to eq(%i[github])
       end
@@ -47,13 +45,13 @@ RSpec.describe Authentication::Providers, type: :service do
 
   describe ".enabled?" do
     it "returns true if a provider is enabled" do
-      allow(SiteConfig).to receive(:authentication_providers).and_return(%w[github])
+      allow(Settings::Authentication).to receive(:providers).and_return(%w[github])
 
       expect(described_class.enabled?(:github)).to be(true)
     end
 
     it "returns false if a provider is not enabled" do
-      allow(SiteConfig).to receive(:authentication_providers).and_return(%w[twitter])
+      allow(Settings::Authentication).to receive(:providers).and_return(%w[twitter])
 
       expect(described_class.enabled?(:github)).to be(false)
     end

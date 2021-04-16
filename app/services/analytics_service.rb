@@ -1,4 +1,6 @@
 class AnalyticsService
+  DEFAULT_REACTION_TOTALS = { total: 0, like: 0, readinglist: 0, unicorn: 0 }.freeze
+
   def initialize(user_or_org, start_date: "", end_date: "", article_id: nil)
     @user_or_org = user_or_org
     @article_id = article_id
@@ -76,17 +78,17 @@ class AnalyticsService
 
       article_ids = [@article_id]
     else
-      article_ids = @article_data.pluck(:id)
+      article_ids = @article_data.ids
     end
 
     # prepare relations for metrics
-    @comment_data = Comment.
-      where(commentable_id: article_ids, commentable_type: "Article").
-      where("score > 0")
-    @follow_data = Follow.
-      where(followable_type: user_or_org.class.name, followable_id: user_or_org.id)
-    @reaction_data = Reaction.public_category.
-      where(reactable_id: article_ids, reactable_type: "Article")
+    @comment_data = Comment
+      .where(commentable_id: article_ids, commentable_type: "Article")
+      .where("score > 0")
+    @follow_data = Follow
+      .where(followable_type: user_or_org.class.name, followable_id: user_or_org.id)
+    @reaction_data = Reaction.public_category
+      .where(reactable_id: article_ids, reactable_type: "Article")
     @page_view_data = PageView.where(article_id: article_ids)
 
     # filter data by date if needed
@@ -107,9 +109,13 @@ class AnalyticsService
       Arel.sql("COUNT(*) FILTER (WHERE category = 'unicorn')"),
     )
 
-    # this transforms the counts, eg. [1, 0, 1, 0]
-    # in a hash, eg. {total: 1, like: 0, readinglist: 1, unicorn: 0}
-    keys.zip(counts).to_h
+    if counts
+      # this transforms the counts, eg. [1, 0, 1, 0]
+      # in a hash, eg. {total: 1, like: 0, readinglist: 1, unicorn: 0}
+      keys.zip(counts).to_h
+    else
+      DEFAULT_REACTION_TOTALS
+    end
   end
 
   def calculate_page_views_totals

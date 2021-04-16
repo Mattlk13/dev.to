@@ -8,9 +8,6 @@ import { request } from '../../utilities/http';
 export async function getChannelDetails(chatChannelMembershipId) {
   const response = await request(
     `/chat_channel_memberships/chat_channel_info/${chatChannelMembershipId}`,
-    {
-      credentials: 'same-origin',
-    },
   );
 
   return response.json();
@@ -35,7 +32,6 @@ export async function updatePersonalChatChannelNotificationSettings(
           show_global_badge_notification: notificationBadge,
         },
       },
-      credentials: 'same-origin',
     },
   );
 
@@ -63,7 +59,6 @@ export async function rejectChatChannelJoiningRequest(
         chat_channel_id: channelId,
         membership_id: membershipId,
       },
-      credentials: 'same-origin',
     },
   );
 
@@ -85,7 +80,6 @@ export async function acceptChatChannelJoiningRequest(channelId, membershipId) {
         user_action: 'accept',
       },
     },
-    credentials: 'same-origin',
   });
 
   return response.json();
@@ -125,7 +119,6 @@ export async function sendChatChannelInvitation(
           invitation_usernames: invitationUsernames,
         },
       },
-      credentials: 'same-origin',
     },
   );
 
@@ -142,10 +135,52 @@ export async function leaveChatChannelMembership(membershipId) {
     `/chat_channel_memberships/leave_membership/${membershipId}`,
     {
       method: 'PATCH',
-
-      credentials: 'same-origin',
     },
   );
+
+  return response.json();
+}
+
+/**
+ * This function is used to update the membership role
+ *  @param {number} membershipId selected User Chat channel membership id
+ *  @param {number} chatChannelId Current chat chaneel id
+ *  @param {string} role updated role for the membership
+ */
+export async function updateMembershipRole(membershipId, chatChannelId, role) {
+  const response = await request(
+    `/chat_channel_memberships/update_membership_role/${chatChannelId}`,
+    {
+      method: 'PATCH',
+      body: {
+        chat_channel_membership: {
+          chat_channel_id: chatChannelId,
+          membership_id: membershipId,
+          role,
+        },
+      },
+    },
+  );
+
+  return response.json();
+}
+
+/**
+ * Create Chat Channel
+ * @param {string} channelName
+ * @param {string} userNames
+ */
+
+export async function createChannel(channelName, userNames) {
+  const response = await request(`/create_channel`, {
+    method: 'POST',
+    body: {
+      chat_channel: {
+        channel_name: channelName,
+        invitation_usernames: userNames,
+      },
+    },
+  });
 
   return response.json();
 }

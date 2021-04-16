@@ -13,15 +13,15 @@ module Slack
         @user = comment.user
       end
 
-      def self.call(*args)
-        new(*args).call
+      def self.call(...)
+        new(...).call
       end
 
       def call
         return unless user.warned
 
         internal_user_url = URL.url(
-          Rails.application.routes.url_helpers.internal_user_path(user),
+          Rails.application.routes.url_helpers.admin_user_path(user),
         )
 
         message = format(

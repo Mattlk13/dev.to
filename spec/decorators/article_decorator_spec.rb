@@ -38,6 +38,23 @@ RSpec.describe ArticleDecorator, type: :decorator do
     end
   end
 
+  describe "has_recent_comment_activity?" do
+    it "returns false if no comment activity" do
+      article.last_comment_at = nil
+      expect(article.decorate.has_recent_comment_activity?).to eq(false)
+    end
+
+    it "returns true if more recent than passed in value" do
+      article.last_comment_at = 1.week.ago
+      expect(article.decorate.has_recent_comment_activity?(2.weeks.ago)).to eq(true)
+    end
+
+    it "returns false if less recent than passed in value" do
+      article.last_comment_at = 4.weeks.ago
+      expect(article.decorate.has_recent_comment_activity?(2.weeks.ago)).to eq(false)
+    end
+  end
+
   describe "#processed_canonical_url" do
     it "strips canonical_url" do
       article.canonical_url = " http://google.com "
@@ -46,7 +63,7 @@ RSpec.describe ArticleDecorator, type: :decorator do
 
     it "returns the article url without a canonical_url" do
       article.canonical_url = ""
-      expected_url = "https://#{ApplicationConfig['APP_DOMAIN']}#{article.path}"
+      expected_url = "#{ApplicationConfig['APP_PROTOCOL']}#{ApplicationConfig['APP_DOMAIN']}#{article.path}"
       expect(article.decorate.processed_canonical_url).to eq(expected_url)
     end
   end
@@ -77,7 +94,7 @@ RSpec.describe ArticleDecorator, type: :decorator do
 
   describe "#url" do
     it "returns the article url" do
-      expected_url = "https://#{ApplicationConfig['APP_DOMAIN']}#{article.path}"
+      expected_url = "#{ApplicationConfig['APP_PROTOCOL']}#{ApplicationConfig['APP_DOMAIN']}#{article.path}"
       expect(article.decorate.url).to eq(expected_url)
     end
   end
@@ -179,8 +196,68 @@ RSpec.describe ArticleDecorator, type: :decorator do
       body_markdown = "---\ntitle: Title\npublished: false\ndescription:\ntags: heytag\n---\n\nHey this is the article"
       search_optimized_description_replacement = "Hey this is the expected result"
       expect(create_article(body_markdown: body_markdown,
-                            search_optimized_description_replacement: search_optimized_description_replacement).
-        description_and_tags).to eq(search_optimized_description_replacement)
+                            search_optimized_description_replacement: search_optimized_description_replacement)
+        .description_and_tags).to eq(search_optimized_description_replacement)
+    end
+  end
+
+  describe "#video_metadata" do
+    it "responds with a hash representation of video metadata" do
+      article_with_video = create(:article,
+                                  video_code: "ABC",
+                                  video_source_url: "https://cdn.com/ABC.m3u8",
+                                  video_thumbnail_url: "https://cdn.com/ABC.png",
+                                  video_closed_caption_track_url: "https://cdn.com/ABC_captions")
+
+      expect(article_with_video.decorate.video_metadata).to eq(
+        {
+          id: article_with_video.id,
+          video_code: article_with_video.video_code,
+          video_source_url: article_with_video.video_source_url,
+          video_thumbnail_url: article_with_video.cloudinary_video_url,
+          video_closed_caption_track_url: article_with_video.video_closed_caption_track_url
+        },
+      )
+    end
+  end
+
+  describe "#long_markdown?" do
+    it "returns false if body_markdown is nil" do
+      article.body_markdown = nil
+      expect(article.decorate.long_markdown?).to eq false
+    end
+
+    it "returns false if body_markdown has fewer characters than LONG_MARKDOWN_THRESHOLD" do
+      article.body_markdown = "---\ntitle: Title\n---\n\nHey this is the article"
+      expect(article.decorate.long_markdown?).to eq false
+    end
+
+    it "returns true if body_markdown has more characters than LONG_MARKDOWN_THRESHOLD" do
+      additional_characters_length = (ArticleDecorator::LONG_MARKDOWN_THRESHOLD + 1) - article.body_markdown.length
+      article.body_markdown << Faker::Hipster.paragraph_by_chars(characters: additional_characters_length)
+      expect(article.decorate.long_markdown?).to eq true
+    end
+  end
+
+  describe "#discussion?" do
+    it "returns false if it's not tagged with discuss" do
+      article.cached_tag_list = "welcome"
+      expect(article.decorate.discussion?).to eq false
+    end
+
+    it "returns false if featured number is less than 35 hours ago" do
+      Timecop.freeze(Time.current) do
+        article.featured_number = 35.hours.ago.to_i - 1
+        expect(article.decorate.discussion?).to eq false
+      end
+    end
+
+    it "returns true if it's tagged with discuss and has a feature number greater than 35 hours ago" do
+      Timecop.freeze(Time.current) do
+        article.cached_tag_list = "welcome, discuss"
+        article.featured_number = 35.hours.ago.to_i + 1
+        expect(article.decorate.discussion?).to eq true
+      end
     end
   end
 end

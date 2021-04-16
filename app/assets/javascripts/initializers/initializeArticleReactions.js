@@ -1,4 +1,4 @@
-/* global sendHapticMessage, showModal */
+/* global sendHapticMessage, showLoginModal */
 
 // Set reaction count to correct number
 function setReactionCount(reactionName, newCount) {
@@ -17,12 +17,26 @@ function setReactionCount(reactionName, newCount) {
   }
 }
 
+function getReactionAriaLabel(reactionName, reacted) {
+  switch (reactionName) {
+    case 'readinglist':
+      return reacted ? 'Remove from reading list' : 'Add to reading list';
+    case 'unicorn':
+      return reacted ? 'Remove unicorn reaction' : 'React with unicorn';
+    case 'like':
+      return reacted ? 'Unlike' : 'Like';
+  }
+}
+
 function showUserReaction(reactionName, animatedClass) {
   const reactionButton = document.getElementById(
     'reaction-butt-' + reactionName,
   );
   reactionButton.classList.add('user-activated', animatedClass);
-  reactionButton.setAttribute('aria-checked', 'true');
+  reactionButton.setAttribute(
+    'aria-label',
+    getReactionAriaLabel(reactionName, true),
+  );
 }
 
 function hideUserReaction(reactionName) {
@@ -30,7 +44,10 @@ function hideUserReaction(reactionName) {
     'reaction-butt-' + reactionName,
   );
   reactionButton.classList.remove('user-activated', 'user-animated');
-  reactionButton.setAttribute('aria-checked', 'false');
+  reactionButton.setAttribute(
+    'aria-label',
+    getReactionAriaLabel(reactionName, false),
+  );
 }
 
 function hasUserReacted(reactionName) {
@@ -40,12 +57,12 @@ function hasUserReacted(reactionName) {
 }
 
 function getNumReactions(reactionName) {
-  var num = document.getElementById('reaction-number-' + reactionName)
-    .textContent;
-  if (num === '') {
+  const reactionEl = document.getElementById('reaction-number-' + reactionName);
+  if (!reactionEl || reactionEl.textContent === '') {
     return 0;
   }
-  return parseInt(num, 10);
+
+  return parseInt(reactionEl.textContent, 10);
 }
 
 function reactToArticle(articleId, reaction) {
@@ -63,7 +80,7 @@ function reactToArticle(articleId, reaction) {
   var userStatus = document.body.getAttribute('data-user-status');
   sendHapticMessage('medium');
   if (userStatus === 'logged-out') {
-    showModal('react-to-article');
+    showLoginModal();
     return;
   }
   toggleReaction();
@@ -102,19 +119,21 @@ function reactToArticle(articleId, reaction) {
 function setCollectionFunctionality() {
   if (document.getElementById('collection-link-inbetween')) {
     var inbetweenLinks = document.getElementsByClassName(
-      'collection-link-inbetween',
+      'series-switcher__link--inbetween',
     );
     var inbetweenLinksLength = inbetweenLinks.length;
     for (var i = 0; i < inbetweenLinks.length; i += 1) {
       inbetweenLinks[i].onclick = (e) => {
         e.preventDefault();
-        var els = document.getElementsByClassName('collection-link-hidden');
+        var els = document.getElementsByClassName(
+          'series-switcher__link--hidden',
+        );
         var elsLength = els.length;
         for (var j = 0; j < elsLength; j += 1) {
-          els[0].classList.remove('collection-link-hidden');
+          els[0].classList.remove('series-switcher__link--hidden');
         }
         for (var k = 0; k < inbetweenLinksLength; k += 1) {
-          inbetweenLinks[0].className = 'collection-link-hidden';
+          inbetweenLinks[0].className = 'series-switcher__link--hidden';
         }
       };
     }

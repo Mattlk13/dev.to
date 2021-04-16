@@ -15,7 +15,7 @@ the administrative overhead.
 Some bugs can only be seen for users with specific roles. You will need to
 change the role to reproduce a problem.
 
-## How do we implement roles in DEV.to?
+## How do we implement roles in Forem?
 
 Roles are implemented in this application using [Rolify][1]. The list of roles
 can be found in [app/models/role.rb][2] and you can search for [has_role in the
@@ -33,21 +33,21 @@ at the console.
 rails console
 ```
 
-- after verifying the user `test_user_name` is missing the `pro` role we proceed
-  to add it and then verify the role has been added:
+- after verifying the user `test_user_name` is missing the `trusted` role we
+  proceed to add it and then verify the role has been added:
 
 ```ruby
 > user = User.find_by(username: "test_user_name")
-> user.has_role? :pro
+> user.has_role?(:trusted)
 => false
 
-> user.add_role :pro
+> user.add_role(:trusted)
 => #<Role:
 ...
-name: "pro"
+name: "trusted"
 .. >
 
-> user.has_role? :pro
+> user.has_role?(:trusted)
 => true
 ```
 
@@ -69,8 +69,7 @@ User.joins(:roles).order(:id).group(:id).pluck(:id, :username, Arel.sql("array_a
 3. [Admin][5]
 
 [1]: https://github.com/RolifyCommunity/rolify
-[2]: https://github.com/thepracticaldev/dev.to/blob/master/app/models/role.rb
-[3]:
-  https://github.com/thepracticaldev/dev.to/search?q=has_role&unscoped_q=has_role
+[2]: https://github.com/forem/forem/blob/master/app/models/role.rb
+[3]: https://github.com/forem/forem/search?q=has_role&unscoped_q=has_role
 [4]: https://stackoverflow.com/a/16096790/1511504
-[5]: /backend/admin
+[5]: /backend/resource-admin

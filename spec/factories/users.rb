@@ -13,17 +13,14 @@ FactoryBot.define do
     profile_image                { Rack::Test::UploadedFile.new(image_path, "image/jpeg") }
     twitter_username             { generate :twitter_username }
     github_username              { generate :github_username }
-    summary                      { Faker::Lorem.paragraph[0..rand(190)] }
-    website_url                  { Faker::Internet.url }
     confirmed_at                 { Time.current }
     saw_onboarding               { true }
     checked_code_of_conduct      { true }
     checked_terms_and_conditions { true }
     display_announcements        { true }
+    registered_at                { Time.current }
     signup_cta_variant           { "navbar_basic" }
     email_digest_periodic        { false }
-    bg_color_hex                 { Faker::Color.hex_color }
-    text_color_hex               { Faker::Color.hex_color }
 
     trait :with_identity do
       transient { identities { Authentication::Providers.available } }
@@ -55,6 +52,10 @@ FactoryBot.define do
       after(:build) { |user, options| user.add_role(:single_resource_admin, options.resource) }
     end
 
+    trait :tech_admin do
+      after(:build) { |user| user.add_role(:tech_admin) }
+    end
+
     trait :restricted_liquid_tag do
       transient do
         resource { nil }
@@ -78,19 +79,24 @@ FactoryBot.define do
       after(:build) { |user| user.add_role(:trusted) }
     end
 
-    trait :banned do
-      after(:build) { |user| user.add_role(:banned) }
+    trait :suspended do
+      after(:build) { |user| user.add_role(:suspended) }
+    end
+
+    trait :invited do
+      after(:build) do |user|
+        user.registered = false
+        user.registered_at = nil
+      end
     end
 
     trait :ignore_mailchimp_subscribe_callback do
       after(:build) do |user|
+        # rubocop:disable Lint/EmptyBlock
         user.define_singleton_method(:subscribe_to_mailchimp_newsletter) {}
+        # rubocop:enable Lint/EmptyBlock
         # user.class.skip_callback(:validates, :after_create)
       end
-    end
-
-    trait :pro do
-      after(:build) { |user| user.add_role :pro }
     end
 
     trait :org_member do
@@ -134,37 +140,17 @@ FactoryBot.define do
     trait :tag_moderator do
       after(:create) do |user|
         tag = create(:tag)
-        user.add_role :tag_moderator, tag
+        user.add_role(:tag_moderator, tag)
       end
     end
 
-    trait :with_user_optional_fields do
-      after(:create) do |user|
-        create(:user_optional_field, user: user)
-        create(:user_optional_field, user: user, label: "another field1", value: "another value1")
-        create(:user_optional_field, user: user, label: "another field2", value: "another value2")
-      end
+    trait :without_profile do
+      _skip_creating_profile { true }
     end
 
-    trait :with_all_info do
-      education { "DEV University" }
-      employment_title { "Software Engineer" }
-      employer_name { "DEV" }
-      employer_url { "http://dev.to" }
-      currently_learning { "Preact" }
-      mostly_work_with { "Ruby" }
-      currently_hacking_on { "JSON-LD" }
-      mastodon_url { "https://mastodon.social/@test" }
-      facebook_url { "www.facebook.com/example" }
-      linkedin_url { "www.linkedin.com/company/example" }
-      youtube_url { "https://youtube.com/example" }
-      behance_url { "www.behance.net/#{username}" }
-      stackoverflow_url { "www.stackoverflow.com/example" }
-      dribbble_url { "www.dribbble.com/example" }
-      medium_url { "www.medium.com/example" }
-      gitlab_url { "www.gitlab.com/example" }
-      instagram_url { "www.instagram.com/example" }
-      twitch_username { "Example007" }
+    trait :with_newsletters do
+      email_newsletter { true }
+      email_digest_periodic { true }
     end
   end
 end

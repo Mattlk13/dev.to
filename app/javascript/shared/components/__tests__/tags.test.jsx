@@ -1,7 +1,7 @@
 import { h } from 'preact';
 import { render, fireEvent } from '@testing-library/preact';
 import { axe } from 'jest-axe';
-import Tags from '../tags';
+import { Tags } from '../tags';
 
 describe('<Tags />', () => {
   beforeAll(() => {
@@ -18,21 +18,6 @@ describe('<Tags />', () => {
   });
 
   describe('handleKeyDown', () => {
-    it('calls preventDefault on unused keyCode', () => {
-      const { getByTestId } = render(
-        <Tags defaultValue="defaultValue" listing />,
-      );
-
-      Event.prototype.preventDefault = jest.fn();
-
-      fireEvent.keyDown(getByTestId('tag-input'), {
-        key: '§',
-        code: '192',
-      });
-
-      expect(Event.prototype.preventDefault).toHaveBeenCalledTimes(1);
-    });
-
     it('does not call preventDefault on used keyCode', () => {
       const { getByTestId } = render(
         <Tags defaultValue="defaultValue" listing />,

@@ -4,7 +4,7 @@ import fetch from 'jest-fetch-mock';
 import '@testing-library/jest-dom';
 
 import { axe } from 'jest-axe';
-import FollowUsers from '../FollowUsers';
+import { FollowUsers } from '../FollowUsers';
 
 global.fetch = fetch;
 
@@ -81,6 +81,8 @@ describe('FollowUsers', () => {
   });
 
   it('should render the correct navigation button on first load', () => {
+    fetch.mockResponseOnce(fakeUsersResponse);
+
     const { queryByText } = renderFollowUsers();
 
     expect(queryByText(/skip for now/i)).toBeDefined();
@@ -91,10 +93,12 @@ describe('FollowUsers', () => {
 
     const { queryByText, findByText, findAllByTestId } = renderFollowUsers();
 
-    const userButtons = await findAllByTestId('onboarding-user-button');
+    const userButtons = await findAllByTestId(
+      'onboarding-user-following-status',
+    );
 
     expect(queryByText(/skip for now/i)).toBeDefined();
-    expect(queryByText("You're not following anyone")).toBeDefined();
+    expect(queryByText(/You're not following anyone/i)).toBeDefined();
 
     // follow the first user
     const firstUser = userButtons[0];
@@ -102,7 +106,7 @@ describe('FollowUsers', () => {
 
     await findByText('Following');
 
-    expect(queryByText("You're following 1 person")).toBeDefined();
+    expect(queryByText(/You're following 1 person/i)).toBeDefined();
     expect(queryByText(/continue/i)).toBeDefined();
 
     // follow the second user
@@ -111,7 +115,7 @@ describe('FollowUsers', () => {
 
     await findByText('Following');
 
-    expect(queryByText("You're following 2 people")).toBeDefined();
+    expect(queryByText(/You're following 2 people/i)).toBeDefined();
     expect(queryByText(/continue/i)).toBeDefined();
   });
 
@@ -132,7 +136,7 @@ describe('FollowUsers', () => {
     await findAllByText('Following');
 
     expect(queryByText('Follow')).toBeNull();
-    getByText("You're following 3 people (everyone)");
+    queryByText(/You're following 3 people (everyone)/i);
 
     // deselect all then test following count
     const deselecAllSelector = await findByText(/Deselect all/i);

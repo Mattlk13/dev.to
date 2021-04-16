@@ -1,9 +1,9 @@
 require "rails_helper"
 
 RSpec.describe "StoriesShow", type: :request do
-  let_it_be(:user)                  { create(:user) }
-  let_it_be(:org, reload: true)     { create(:organization) }
-  let_it_be(:article, reload: true) { create(:article, user: user) }
+  let(:user) { create(:user) }
+  let(:org)     { create(:organization) }
+  let(:article) { create(:article, user: user) }
 
   describe "GET /:username/:slug (articles)" do
     it "renders proper title" do
@@ -19,13 +19,40 @@ RSpec.describe "StoriesShow", type: :request do
       expect(response).to have_http_status(:moved_permanently)
     end
 
+    it "preserves internal nav param (i=i) upon redirect" do
+      old_path = article.path
+      article.update(organization: org)
+      get "#{old_path}?i=i"
+      expect(response.body).to redirect_to "#{article.path}?i=i"
+      expect(response).to have_http_status(:moved_permanently)
+    end
+
+    it "does not have ?i=i on redirects which did not originally include it" do
+      old_path = article.path
+      article.update(organization: org)
+      get old_path
+      expect(response.body).not_to redirect_to "#{article.path}?i=i"
+      expect(response).to have_http_status(:moved_permanently)
+    end
+
+    it "does not have ?i=i on redirects without that precise param" do
+      old_path = article.path
+      article.update(organization: org)
+      get "#{old_path}?i=j"
+      expect(response.body).to redirect_to article.path
+      expect(response.body).not_to redirect_to  "#{article.path}?i=j"
+      expect(response.body).not_to redirect_to  "#{article.path}?i=j"
+    end
+
     ## Title tag
     it "renders signed-in title tag for signed-in user" do
+      allow(SiteConfig).to receive(:community_emoji).and_return("🌱")
+
       sign_in user
       get article.path
 
-      expected_title = "<title>#{CGI.escapeHTML(article.title)} - #{community_qualified_name} 👩‍💻👨‍💻</title>"
-      expect(response.body).to include(expected_title)
+      title = "<title>#{CGI.escapeHTML(article.title)} - #{community_name} #{community_emoji}</title>"
+      expect(response.body).to include(title)
     end
 
     it "renders signed-out title tag for signed-out user" do
@@ -44,12 +71,14 @@ RSpec.describe "StoriesShow", type: :request do
     end
 
     it "does not render title tag with search_optimized_title_preamble if set and not signed in" do
+      allow(SiteConfig).to receive(:community_emoji).and_return("🌱")
+
       sign_in user
       article.update_column(:search_optimized_title_preamble, "Hey this is a test")
       get article.path
 
-      expected_title = "<title>#{CGI.escapeHTML(article.title)} - #{community_qualified_name} 👩‍💻👨‍💻</title>"
-      expect(response.body).to include(expected_title)
+      title = "<title>#{CGI.escapeHTML(article.title)} - #{community_name} #{community_emoji}</title>"
+      expect(response.body).to include(title)
     end
 
     it "does not render preamble with search_optimized_title_preamble not signed in but not set" do
@@ -75,6 +104,19 @@ RSpec.describe "StoriesShow", type: :request do
       expect(response.body).not_to include("<span class=\"fs-xl color-base-70 block\">Hey this is a test</span>")
     end
 
+    ###
+
+    it "renders date-no-year if article published this year" do
+      get article.path
+      expect(response.body).to include "date-no-year"
+    end
+
+    it "renders date with year if article published last year" do
+      article.update_column(:published_at, 1.year.ago)
+      get article.path
+      expect(response.body).not_to include "date-no-year"
+    end
+
     it "renders user payment pointer if set" do
       article.user.update_column(:payment_pointer, "this-is-a-pointer")
       get article.path
@@ -90,7 +132,7 @@ RSpec.describe "StoriesShow", type: :request do
     it "renders second and third users if present" do
       # 3rd user doesn't seem to get rendered for some reason
       user2 = create(:user)
-      article.update(second_user_id: user2.id)
+      article.update(co_author_ids: [user2.id])
       get article.path
       expect(response.body).to include "<em>with <b><a href=\"#{user2.path}\">"
     end

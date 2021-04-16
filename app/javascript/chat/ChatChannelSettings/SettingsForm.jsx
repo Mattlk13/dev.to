@@ -1,7 +1,8 @@
 import { h } from 'preact';
 import PropTypes from 'prop-types';
+import { Button } from '@crayons';
 
-const SettingsFrom = ({
+export const SettingsForm = ({
   channelDescription,
   handleDescriptionChange,
   channelDiscoverable,
@@ -42,24 +43,18 @@ const SettingsFrom = ({
         </label>
       </div>
       <div>
-        <button
-          className="crayons-btn"
-          type="submit"
-          onClick={handleChannelDescriptionChanges}
-        >
+        <Button type="submit" onClick={handleChannelDescriptionChanges}>
           Submit
-        </button>
+        </Button>
       </div>
     </div>
   );
 };
 
-SettingsFrom.propTypes = {
+SettingsForm.propTypes = {
   channelDescription: PropTypes.string.isRequired,
   handleDescriptionChange: PropTypes.func.isRequired,
   handleChannelDiscoverableStatus: PropTypes.func.isRequired,
   handleChannelDescriptionChanges: PropTypes.func.isRequired,
   channelDiscoverable: PropTypes.bool.isRequired,
 };
-
-export default SettingsFrom;

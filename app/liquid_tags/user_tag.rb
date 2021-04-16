@@ -11,7 +11,7 @@ class UserTag < LiquidTagBase
   end
 
   def render(_context)
-    ActionController::Base.new.render_to_string(
+    ApplicationController.render(
       partial: PARTIAL,
       locals: {
         user: user_object_for_partial(@user),
@@ -25,7 +25,7 @@ class UserTag < LiquidTagBase
   private
 
   def parse_username_to_user(user)
-    User.find_by(username: user) || DELETED_USER
+    User.find_by(username: user, registered: true) || DELETED_USER
   end
 
   def path_to_profile(user)

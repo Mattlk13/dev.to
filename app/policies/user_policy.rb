@@ -1,12 +1,13 @@
 class UserPolicy < ApplicationPolicy
   PERMITTED_ATTRIBUTES = %i[
+    reaction_notifications
     available_for
     behance_url
     bg_color_hex
     config_font
     config_theme
     config_navbar
-    contact_consent
+    current_password
     currently_hacking_on
     currently_learning
     display_announcements
@@ -30,7 +31,6 @@ class UserPolicy < ApplicationPolicy
     export_requested
     facebook_url
     youtube_url
-    feed_admin_publish_permission
     feed_mark_canonical
     feed_referential_link
     feed_url
@@ -40,8 +40,6 @@ class UserPolicy < ApplicationPolicy
     instagram_url
     linkedin_url
     location
-    looking_for_work
-    looking_for_work_publicly
     mastodon_url
     medium_url
     mobile_comment_notifications
@@ -58,7 +56,6 @@ class UserPolicy < ApplicationPolicy
     summary
     text_color_hex
     twitch_url
-    twitch_username
     username
     website_url
   ].freeze
@@ -79,14 +76,6 @@ class UserPolicy < ApplicationPolicy
     current_user?
   end
 
-  def update_twitch_username?
-    current_user?
-  end
-
-  def update_language_settings?
-    current_user?
-  end
-
   def destroy?
     current_user?
   end
@@ -104,7 +93,7 @@ class UserPolicy < ApplicationPolicy
   end
 
   def join_org?
-    !user_is_banned?
+    !user_suspended?
   end
 
   def leave_org?
@@ -119,12 +108,12 @@ class UserPolicy < ApplicationPolicy
     current_user? || user_admin? || minimal_admin?
   end
 
-  def pro_user?
-    current_user? && user.pro?
+  def moderation_routes?
+    (user.has_role?(:trusted) || minimal_admin?) && !user.suspended?
   end
 
-  def moderation_routes?
-    (user.has_role?(:trusted) || minimal_admin?) && !user.banned
+  def update_password?
+    current_user?
   end
 
   def permitted_attributes

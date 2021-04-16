@@ -1,19 +1,22 @@
-# Silence all Ruby 2.7 deprecation warnings
-$VERBOSE = nil
+require "active_support/core_ext/integer/time"
 
+# The test environment is used exclusively to run your application's
+# test suite. You never need to work with it otherwise. Remember that
+# your test database is "scratch space" for the test suite and is wiped
+# and recreated between test runs. Don't rely on the data there!
+
+# rubocop:disable Metrics/BlockLength
 Rails.application.configure do
   # Settings specified here will take precedence over those in config/application.rb.
 
-  # The test environment is used exclusively to run your application's
-  # test suite. You never need to work with it otherwise. Remember that
-  # your test database is "scratch space" for the test suite and is wiped
-  # and recreated between test runs. Don't rely on the data there!
   config.cache_classes = true
 
-  # NOTE: [Rails 6] this is the default store in testing,
-  # as we haven't enabled Rails 6.0 defaults in config/application.rb,
-  # we need to keep this explicit, for now
-  config.cache_store = :null_store
+  # Include middleware to ensure timezone for browser requests for Capybara specs
+  # matches the random zonebie timezone set at the beginning of our spec run
+  config.middleware.use SetTimeZone
+
+  # See https://github.com/rails/rails/issues/40613#issuecomment-727283155
+  config.action_view.cache_template_loading = true
 
   # Do not eager load code on boot. This avoids loading your whole application
   # just for the purpose of running a single test. If you are using a tool that
@@ -29,15 +32,13 @@ Rails.application.configure do
   # Show full error reports and disable caching.
   config.consider_all_requests_local       = true
   config.action_controller.perform_caching = false
+  config.cache_store = :null_store
 
   # Raise exceptions instead of rendering exception templates.
   config.action_dispatch.show_exceptions = false
 
   # Disable request forgery protection in test environment.
   config.action_controller.allow_forgery_protection = false
-
-  # Store uploaded files on the local file system in a temporary directory
-  # config.active_storage.service = :test
 
   config.action_mailer.perform_caching = false
 
@@ -55,13 +56,22 @@ Rails.application.configure do
   # Print deprecation notices to the stderr.
   config.active_support.deprecation = :stderr
 
-  # Raises error for missing translations
-  # config.action_view.raise_on_missing_translations = true
+  # Raise exceptions for disallowed deprecations.
+  config.active_support.disallowed_deprecation = :raise
+
+  # Tell Active Support which deprecation messages to disallow.
+  config.active_support.disallowed_deprecation_warnings = []
 
   config.active_job.queue_adapter = :test
 
   # Debug is the default log_level, but can be changed per environment.
   config.log_level = :debug
+
+  # Raises error for missing translations.
+  # config.i18n.raise_on_missing_translations = true
+
+  # Annotate rendered view with file names
+  # config.action_view.annotate_rendered_view_with_filenames = true
 
   # enable Bullet in testing mode only if requested
   config.after_initialize do
@@ -74,7 +84,10 @@ Rails.application.configure do
     # Supress incorrect warnings from Bullet due to included columns: https://github.com/flyerhzm/bullet/issues/147
     Bullet.add_whitelist(type: :unused_eager_loading, class_name: "Article", association: :top_comments)
     Bullet.add_whitelist(type: :unused_eager_loading, class_name: "Comment", association: :user)
+    # NOTE: @citizen428 Temporarily ignoring this while working out user - profile relationship
+    Bullet.add_whitelist(type: :n_plus_one_query, class_name: "User", association: :profile)
   end
 end
+# rubocop:enable Metrics/BlockLength
 
 Rails.application.routes.default_url_options = { host: "test.host" }

@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-undef
 module.exports = {
   env: {
     browser: true,
@@ -12,5 +13,22 @@ module.exports = {
     ecmaVersion: 2018,
     sourceType: 'module',
   },
-  rules: {},
+  rules: {
+    'no-console': ['error', { allow: ['error'] }],
+    'no-restricted-syntax': [
+      'error',
+      {
+        selector: 'ExportDefaultDeclaration',
+        message: 'Prefer named exports',
+      },
+    ],
+  },
+  overrides: [
+    {
+      files: ['**/*.stories.jsx', 'app/javascript/admin/controllers/*.js'],
+      rules: {
+        'no-restricted-syntax': 'off',
+      },
+    },
+  ],
 };

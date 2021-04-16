@@ -17,13 +17,13 @@ module Slack
         @message = message
       end
 
-      def self.call(*args)
-        new(*args).call
+      def self.call(...)
+        new(...).call
       end
 
       def call
         report_url = URL.url(
-          Rails.application.routes.url_helpers.internal_report_path(report_id),
+          Rails.application.routes.url_helpers.admin_report_path(report_id),
         )
 
         final_message = format(

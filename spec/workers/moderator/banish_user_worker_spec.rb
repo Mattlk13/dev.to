@@ -12,15 +12,15 @@ RSpec.describe Moderator::BanishUserWorker, type: :worker do
       create(:article, user_id: user.id)
       create(:article, user_id: user.id)
       create(:listing, user: user)
-      ChatChannel.create_with_users(users: [user, user2])
+      ChatChannels::CreateWithUsers.call(users: [user, user2])
       user.follow(user2)
       described_class.new.perform(admin.id, user.id)
       user.reload
     end
 
-    it "makes user banned and username spam" do
+    it "makes user suspended and username spam" do
       expect(user.username).to include("spam")
-      expect(user.has_role?(:banned)).to be true
+      expect(user.has_role?(:suspended)).to be true
     end
 
     it "deletes user content" do
@@ -33,7 +33,7 @@ RSpec.describe Moderator::BanishUserWorker, type: :worker do
     end
 
     it "reassigns profile info" do
-      expect(user.currently_hacking_on).to eq("")
+      expect(user.currently_hacking_on).to be_blank
     end
 
     it "creates an entry in the BanishedUsers table" do

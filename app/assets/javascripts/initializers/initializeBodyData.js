@@ -1,4 +1,3 @@
-
 /* global checkUserLoggedIn */
 
 function removeExistingCSRF() {
@@ -48,6 +47,10 @@ function fetchBaseData() {
             ga('set', 'userId', JSON.parse(json.user).id);
           }
         }, 400);
+      } else {
+        // Ensure user data is not exposed if no one is logged in
+        delete document.body.dataset.user;
+        browserStoreCache('remove');
       }
     }
   };

@@ -1,6 +1,6 @@
 class GitPitchTag < LiquidTagBase
   PARTIAL = "liquids/gitpitch".freeze
-  URL_REGEXP = /(http|https):\/\/gitpitch.com\/[a-zA-Z0-9\-\/]*/.freeze
+  URL_REGEXP = %r{(http|https)://gitpitch.com/[a-zA-Z0-9\-/]*}.freeze
 
   def initialize(_tag_name, link, _parse_context)
     super
@@ -8,7 +8,7 @@ class GitPitchTag < LiquidTagBase
   end
 
   def render(_context)
-    ActionController::Base.new.render_to_string(
+    ApplicationController.render(
       partial: PARTIAL,
       locals: {
         link: @link
@@ -20,7 +20,7 @@ class GitPitchTag < LiquidTagBase
 
   def parse_link(link)
     stripped_link = ActionController::Base.helpers.strip_tags(link)
-    the_link = stripped_link.split(" ").first
+    the_link = stripped_link.split.first
     raise_error unless valid_link?(the_link)
     the_link
   end

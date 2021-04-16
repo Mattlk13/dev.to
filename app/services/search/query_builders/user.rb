@@ -17,10 +17,13 @@ module Search
       }.freeze
 
       def initialize(params:)
+        super()
+
         @params = params.deep_symbolize_keys
 
-        # default to excluding users who are banned
-        @params[:exclude_roles] = ["banned"]
+        # default to excluding users who are suspended
+        # TODO: [@jacobherrington] banned can be removed once the data scripts have succesfully run on all Forems
+        @params[:exclude_roles] = %w[suspended banned]
 
         build_body
       end
@@ -38,11 +41,11 @@ module Search
       end
 
       def excluded_term_keys
-        EXCLUDED_TERM_KEYS.map do |term_key, search_key|
+        EXCLUDED_TERM_KEYS.filter_map do |term_key, search_key|
           next unless @params.key? term_key
 
           { terms: { search_key => Array.wrap(@params[term_key]) } }
-        end.compact
+        end
       end
     end
   end

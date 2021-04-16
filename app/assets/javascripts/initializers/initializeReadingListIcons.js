@@ -50,7 +50,7 @@ function reactToReadingListButtonClick(event) {
   sendHapticMessage('medium');
   userStatus = document.body.getAttribute('data-user-status');
   if (userStatus === 'logged-out') {
-    showModal('add-to-readinglist-from-index');
+    showLoginModal();
     return;
   }
   button = properButtonFromEvent(event);
@@ -91,7 +91,8 @@ function renderNewSidebarCount(button, json) {
     newCount = count - 1;
   }
   document.getElementById('reading-list-count').dataset.count = newCount;
-  document.getElementById('reading-list-count').innerHTML = newCount;
+  document.getElementById('reading-list-count').innerHTML =
+    newCount > 0 ? newCount : '';
 }
 
 function buttonFormData(button) {

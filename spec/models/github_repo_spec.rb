@@ -3,9 +3,12 @@ require "rails_helper"
 RSpec.describe GithubRepo, type: :model do
   let(:user) { create(:user, :with_identity, identities: ["github"]) }
   let(:repo) { create(:github_repo, user: user) }
+  let(:cache_bust) { instance_double(EdgeCache::Bust) }
 
   before do
     omniauth_mock_github_payload
+    allow(EdgeCache::Bust).to receive(:new).and_return(cache_bust)
+    allow(cache_bust).to receive(:call)
   end
 
   describe "validations" do
@@ -36,13 +39,11 @@ RSpec.describe GithubRepo, type: :model do
       end
 
       it "busts the correct caches" do
-        allow(CacheBuster).to receive(:bust)
-
         repo.save
 
-        expect(CacheBuster).to have_received(:bust).with(user.path)
-        expect(CacheBuster).to have_received(:bust).with("#{user.path}?i=i")
-        expect(CacheBuster).to have_received(:bust).with("#{user.path}/?i=i")
+        expect(cache_bust).to have_received(:call).with(user.path)
+        expect(cache_bust).to have_received(:call).with("#{user.path}?i=i")
+        expect(cache_bust).to have_received(:call).with("#{user.path}/?i=i")
       end
     end
   end
@@ -58,12 +59,12 @@ RSpec.describe GithubRepo, type: :model do
 
     it "creates a new repo" do
       expect do
-        described_class.upsert(user, params)
+        described_class.upsert(user, **params)
       end.to change(described_class, :count).by(1)
     end
 
     it "creates a repo for the given user" do
-      repo = described_class.upsert(user, params)
+      repo = described_class.upsert(user, **params)
 
       expect(repo.user_id).to eq(user.id)
     end
@@ -79,29 +80,11 @@ RSpec.describe GithubRepo, type: :model do
   end
 
   describe "::update_to_latest" do
-    let(:fake_github_client) do
-      Class.new(Github::OauthClient) do
-        def repository(name); end
-      end
-    end
-
-    let(:stubbed_github_repo) do
-      OpenStruct.new(repo.attributes.merge(id: repo.github_id_code, html_url: repo.url))
-    end
-    let(:github_client) { instance_double(fake_github_client, repository: stubbed_github_repo) }
-
-    before do
-      allow(Github::OauthClient).to receive(:new).and_return(github_client)
-    end
-
-    it "updates all repositories" do
-      repo.save
-      old_updated_at = repo.updated_at
-
-      Timecop.freeze(3.days.from_now) do
-        described_class.update_to_latest
-        expect(old_updated_at).not_to eq(described_class.find(repo.id).updated_at)
-      end
+    it "enqueues GithubRepos::RepoSyncWorker" do
+      repo.update(updated_at: 1.week.ago)
+      allow(GithubRepos::RepoSyncWorker).to receive(:perform_async)
+      described_class.update_to_latest
+      expect(GithubRepos::RepoSyncWorker).to have_received(:perform_async).with(repo.id)
     end
   end
 end

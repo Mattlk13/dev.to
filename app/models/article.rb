@@ -5,6 +5,7 @@ class Article < ApplicationRecord
   include Reactable
   include Searchable
   include UserSubscriptionSourceable
+  include PgSearch::Model
 
   SEARCH_SERIALIZER = Search::ArticleSerializer
   SEARCH_CLASS = Search::FeedContent
@@ -19,109 +20,214 @@ class Article < ApplicationRecord
   delegate :name, to: :user, prefix: true
   delegate :username, to: :user, prefix: true
 
-  belongs_to :user
-  belongs_to :organization, optional: true
   # touch: true was removed because when an article is updated, the associated collection
   # is touched along with all its articles(including this one). This causes eventually a deadlock.
   belongs_to :collection, optional: true
 
+  belongs_to :organization, optional: true
+  belongs_to :user
+
   counter_culture :user
   counter_culture :organization
 
-  has_many :comments, as: :commentable, inverse_of: :commentable
+  # TODO: Vaidehi Joshi - Extract this into a constant or SiteConfig variable
+  # after https://github.com/forem/rfcs/pull/22 has been completed?
+  MAX_USER_MENTIONS = 7 # Explicitly set to 7 to accommodate DEV Top 7 Posts
+  # The date that we began limiting the number of user mentions in an article.
+  MAX_USER_MENTION_LIVE_AT = Time.utc(2021, 4, 7).freeze
+
+  has_many :comments, as: :commentable, inverse_of: :commentable, dependent: :nullify
+  has_many :html_variant_successes, dependent: :nullify
+  has_many :html_variant_trials, dependent: :nullify
+  has_many :notification_subscriptions, as: :notifiable, inverse_of: :notifiable, dependent: :destroy
+  has_many :notifications, as: :notifiable, inverse_of: :notifiable, dependent: :delete_all
+  has_many :page_views, dependent: :destroy
+  has_many :polls, dependent: :destroy
+  has_many :profile_pins, as: :pinnable, inverse_of: :pinnable, dependent: :destroy
+  has_many :rating_votes, dependent: :destroy
   has_many :top_comments,
            lambda {
-             where(
-               "comments.score > ? AND ancestry IS NULL and hidden_by_commentable_user is FALSE and deleted is FALSE",
-               10,
-             ).order("comments.score DESC")
+             where(comments: { score: 11.. }, ancestry: nil, hidden_by_commentable_user: false, deleted: false)
+               .order("comments.score" => :desc)
            },
            as: :commentable,
            inverse_of: :commentable,
            class_name: "Comment"
-  has_many :profile_pins, as: :pinnable, inverse_of: :pinnable
-  has_many :buffer_updates, dependent: :destroy
-  has_many :notifications, as: :notifiable, inverse_of: :notifiable, dependent: :delete_all
-  has_many :notification_subscriptions, as: :notifiable, inverse_of: :notifiable, dependent: :destroy
-  has_many :rating_votes
-  has_many :page_views
 
-  validates :slug, presence: { if: :published? }, format: /\A[0-9a-z\-_]*\z/,
-                   uniqueness: { scope: :user_id }
-  validates :title, presence: true,
-                    length: { maximum: 128 }
-  validates :user_id, presence: true
-  validates :feed_source_url, uniqueness: { allow_blank: true }
-  validates :canonical_url,
-            url: { allow_blank: true, no_local: true, schemes: %w[https http] },
-            uniqueness: { allow_blank: true }
   validates :body_markdown, length: { minimum: 0, allow_nil: false }, uniqueness: { scope: %i[user_id title] }
-  validate :validate_tag
-  validate :validate_video
-  validate :validate_collection_permission
-  validate :past_or_present_date
-  validate :canonical_url_must_not_have_spaces
-  validates :video_state, inclusion: { in: %w[PROGRESSING COMPLETED] }, allow_nil: true
+  validates :boost_states, presence: true
   validates :cached_tag_list, length: { maximum: 126 }
+  validates :canonical_url, uniqueness: { allow_nil: true }
+  validates :canonical_url, url: { allow_blank: true, no_local: true, schemes: %w[https http] }
+  validates :comments_count, presence: true
+  validates :feed_source_url, uniqueness: { allow_nil: true }
+  validates :feed_source_url, url: { allow_blank: true, no_local: true, schemes: %w[https http] }
   validates :main_image, url: { allow_blank: true, schemes: %w[https http] }
   validates :main_image_background_hex_color, format: /\A#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})\z/
+  validates :positive_reactions_count, presence: true
+  validates :previous_public_reactions_count, presence: true
+  validates :public_reactions_count, presence: true
+  validates :rating_votes_count, presence: true
+  validates :reactions_count, presence: true
+  validates :slug, presence: { if: :published? }, format: /\A[0-9a-z\-_]*\z/
+  validates :slug, uniqueness: { scope: :user_id }
+  validates :title, presence: true, length: { maximum: 128 }
+  validates :user_id, presence: true
+  validates :user_subscriptions_count, presence: true
   validates :video, url: { allow_blank: true, schemes: %w[https http] }
-  validates :video_source_url, url: { allow_blank: true, schemes: ["https"] }
-  validates :video_thumbnail_url, url: { allow_blank: true, schemes: %w[https http] }
   validates :video_closed_caption_track_url, url: { allow_blank: true, schemes: ["https"] }
   validates :video_source_url, url: { allow_blank: true, schemes: ["https"] }
+  validates :video_source_url, url: { allow_blank: true, schemes: ["https"] }
+  validates :video_state, inclusion: { in: %w[PROGRESSING COMPLETED] }, allow_nil: true
+  validates :video_thumbnail_url, url: { allow_blank: true, schemes: %w[https http] }
+
+  validate :canonical_url_must_not_have_spaces
+  validate :past_or_present_date
+  validate :validate_collection_permission
+  validate :validate_tag
+  validate :validate_video
+  validate :user_mentions_in_markdown
+  validate :validate_co_authors, unless: -> { co_author_ids.blank? }
+  validate :validate_co_authors_must_not_be_the_same, unless: -> { co_author_ids.blank? }
+  validate :validate_co_authors_exist, unless: -> { co_author_ids.blank? }
 
   before_validation :evaluate_markdown, :create_slug
-  before_create :create_password
-  before_save :set_all_dates
-  before_save :calculate_base_scores
-  before_save :set_caches
-  before_save :fetch_video_duration
-  before_save :clean_data
   before_save :update_cached_user
+  before_save :set_all_dates
+  before_save :clean_data
+  before_save :calculate_base_scores
+  before_save :fetch_video_duration
+  before_save :set_caches
+  before_create :create_password
+  before_destroy :before_destroy_actions, prepend: true
 
-  after_save :bust_cache, :detect_human_language
+  after_save :create_conditional_autovomits
+  after_save :bust_cache
   after_save :notify_slack_channel_about_publication
 
   after_update_commit :update_notifications, if: proc { |article|
                                                    article.notifications.any? && !article.saved_changes.empty?
                                                  }
-  after_commit :async_score_calc, :update_main_image_background_hex, :touch_collection, on: %i[create update]
+
+  after_commit :async_score_calc, :touch_collection, on: %i[create update]
   after_commit :index_to_elasticsearch, on: %i[create update]
-  after_commit :sync_related_elasticsearch_docs, on: %i[create update]
+  after_commit :sync_related_elasticsearch_docs, on: %i[update]
   after_commit :remove_from_elasticsearch, on: [:destroy]
 
-  before_destroy :before_destroy_actions, prepend: true
+  # The trigger `update_reading_list_document` is used to keep the `articles.reading_list_document` column updated.
+  #
+  # Its body is inserted in a PostgreSQL trigger function and that joins the columns values
+  # needed to search documents in the context of a "reading list".
+  #
+  # Please refer to https://github.com/jenseng/hair_trigger#usage in case you want to change or update the trigger.
+  #
+  # Additional information on how triggers work can be found in
+  # => https://www.postgresql.org/docs/11/trigger-definition.html
+  # => https://www.cybertec-postgresql.com/en/postgresql-how-to-write-a-trigger/
+  #
+  # Adapted from https://dba.stackexchange.com/a/289361/226575
+  trigger
+    .name(:update_reading_list_document).before(:insert, :update).for_each(:row)
+    .declare("l_org_vector tsvector; l_user_vector tsvector") do
+    <<~SQL
+      NEW.reading_list_document :=
+        to_tsvector('simple'::regconfig, unaccent(coalesce(NEW.body_markdown, ''))) ||
+        to_tsvector('simple'::regconfig, unaccent(coalesce(NEW.cached_tag_list, ''))) ||
+        to_tsvector('simple'::regconfig, unaccent(coalesce(NEW.cached_user_name, ''))) ||
+        to_tsvector('simple'::regconfig, unaccent(coalesce(NEW.cached_user_username, ''))) ||
+        to_tsvector('simple'::regconfig, unaccent(coalesce(NEW.title, ''))) ||
+        to_tsvector('simple'::regconfig,
+          unaccent(
+            coalesce(
+              array_to_string(
+                -- cached_organization is serialized to the DB as a YAML string, we extract only the name attribute
+                regexp_match(NEW.cached_organization, 'name: (.*)$', 'n'),
+                ' '
+              ),
+              ''
+            )
+          )
+        );
+    SQL
+  end
 
   serialize :cached_user
   serialize :cached_organization
 
-  scope :published, -> { where(published: true) }
+  pg_search_scope :search_reading_list,
+                  against: :reading_list_document,
+                  using: {
+                    tsearch: {
+                      prefix: true,
+                      tsvector_column: :reading_list_document
+                    }
+                  },
+                  ignoring: :accents
+
+  # [@jgaskins] We use an index on `published`, but since it's a boolean value
+  #   the Postgres query planner often skips it due to lack of diversity of the
+  #   data in the column. However, since `published_at` is a *very* diverse
+  #   column and can scope down the result set significantly, the query planner
+  #   can make heavy use of it.
+  scope :published, lambda {
+    where(published: true)
+      .where("published_at <= ?", Time.current)
+  }
   scope :unpublished, -> { where(published: false) }
 
   scope :admin_published_with, lambda { |tag_name|
-    published.
-      where(user_id: SiteConfig.staff_user_id).
-      order(published_at: :desc).
-      tagged_with(tag_name)
+    published
+      .where(user_id: User.with_role(:super_admin)
+                          .union(User.with_role(:admin))
+                          .union(id: [SiteConfig.staff_user_id, SiteConfig.mascot_user_id].compact)
+                          .select(:id)).order(published_at: :desc).tagged_with(tag_name)
   }
 
   scope :user_published_with, lambda { |user_id, tag_name|
-    published.
-      where(user_id: user_id).
-      order(published_at: :desc).
-      tagged_with(tag_name)
+    published
+      .where(user_id: user_id)
+      .order(published_at: :desc)
+      .tagged_with(tag_name)
   }
 
-  scope :cached_tagged_with, ->(tag) { where("cached_tag_list ~* ?", "^#{tag},| #{tag},|, #{tag}$|^#{tag}$") }
+  scope :cached_tagged_with, lambda { |tag|
+    case tag
+    when String
+      # In Postgres regexes, the [[:<:]] and [[:>:]] are equivalent to "start of
+      # word" and "end of word", respectively. They're similar to `\b` in Perl-
+      # compatible regexes (PCRE), but that matches at either end of a word.
+      # They're more comparable to how vim's `\<` and `\>` work.
+      where("cached_tag_list ~ ?", "[[:<:]]#{tag}[[:>:]]")
+    when Array
+      tag.reduce(self) { |acc, elem| acc.cached_tagged_with(elem) }
+    when Tag
+      cached_tagged_with(tag.name)
+    else
+      raise TypeError, "Cannot search tags for: #{tag.inspect}"
+    end
+  }
+
+  scope :cached_tagged_with_any, lambda { |tags|
+    case tags
+    when String
+      cached_tagged_with(tags)
+    when Array
+      tags
+        .map { |tag| cached_tagged_with(tag) }
+        .reduce { |acc, elem| acc.or(elem) }
+    when Tag
+      cached_tagged_with(tag.name)
+    else
+      raise TypeError, "Cannot search tags for: #{tag.inspect}"
+    end
+  }
 
   scope :cached_tagged_by_approval_with, ->(tag) { cached_tagged_with(tag).where(approved: true) }
 
   scope :active_help, lambda {
-    published.
-      cached_tagged_with("help").
-      order(created_at: :desc).
-      where("published_at > ? AND comments_count < ? AND score > ?", 12.hours.ago, 6, -4)
+    stories = published.cached_tagged_with("help").order(created_at: :desc)
+
+    stories.where(published_at: 12.hours.ago.., comments_count: ..5, score: -3..).presence || stories
   }
 
   scope :limited_column_select, lambda {
@@ -129,7 +235,7 @@ class Article < ApplicationRecord
            :comments_count, :public_reactions_count, :cached_tag_list,
            :main_image, :main_image_background_hex_color, :updated_at, :slug,
            :video, :user_id, :organization_id, :video_source_url, :video_code,
-           :video_thumbnail_url, :video_closed_caption_track_url, :language,
+           :video_thumbnail_url, :video_closed_caption_track_url,
            :experience_level_rating, :experience_level_rating_distribution, :cached_user, :cached_organization,
            :published_at, :crossposted_at, :boost_states, :description, :reading_time, :video_duration_in_seconds,
            :last_comment_at)
@@ -142,8 +248,7 @@ class Article < ApplicationRecord
            :video, :user_id, :organization_id, :video_source_url, :video_code,
            :video_thumbnail_url, :video_closed_caption_track_url, :social_image,
            :published_from_feed, :crossposted_at, :published_at, :featured_number,
-           :last_buffered, :facebook_last_buffered, :created_at, :body_markdown,
-           :email_digest_eligible, :processed_html)
+           :created_at, :body_markdown, :email_digest_eligible, :processed_html, :co_author_ids)
   }
 
   scope :boosted_via_additional_articles, lambda {
@@ -175,17 +280,17 @@ class Article < ApplicationRecord
   }
 
   scope :feed, lambda {
-                 published.includes(:taggings).
-                   select(
+                 published.includes(:taggings)
+                   .select(
                      :id, :published_at, :processed_html, :user_id, :organization_id, :title, :path, :cached_tag_list
                    )
                }
 
   scope :with_video, lambda {
-                       published.
-                         where.not(video: [nil, ""]).
-                         where.not(video_thumbnail_url: [nil, ""]).
-                         where("score > ?", -4)
+                       published
+                         .where.not(video: [nil, ""])
+                         .where.not(video_thumbnail_url: [nil, ""])
+                         .where("score > ?", -4)
                      }
 
   scope :eager_load_serialized_data, -> { includes(:user, :organization, :tags) }
@@ -196,21 +301,6 @@ class Article < ApplicationRecord
     boosted_additional_tags String, default: ""
   end
 
-  def self.active_threads(tags = ["discuss"], time_ago = nil, number = 10)
-    stories = published.limit(number)
-    stories = if time_ago == "latest"
-                stories.order("published_at DESC").where("score > ?", -5)
-              elsif time_ago
-                stories.order("comments_count DESC").
-                  where("published_at > ? AND score > ?", time_ago, -5)
-              else
-                stories.order("last_comment_at DESC").
-                  where("published_at > ? AND score > ?", (tags.present? ? 5 : 2).days.ago, -5)
-              end
-    stories = tags.size == 1 ? stories.cached_tagged_with(tags.first) : stories.tagged_with(tags)
-    stories.pluck(:path, :title, :comments_count, :created_at)
-  end
-
   def self.seo_boostable(tag = nil, time_ago = 18.days.ago)
     # Time ago sometimes returns this phrase instead of a date
     time_ago = 5.days.ago if time_ago == "latest"
@@ -218,11 +308,11 @@ class Article < ApplicationRecord
     # Time ago sometimes is given as nil and should then be the default. I know, sloppy.
     time_ago = 75.days.ago if time_ago.nil?
 
-    relation = Article.published.
-      order(organic_page_views_past_month_count: :desc).
-      where("score > ?", 8).
-      where("published_at > ?", time_ago).
-      limit(20)
+    relation = Article.published
+      .order(organic_page_views_past_month_count: :desc)
+      .where("score > ?", 8)
+      .where("published_at > ?", time_ago)
+      .limit(20)
 
     fields = %i[path title comments_count created_at]
     if tag
@@ -233,10 +323,10 @@ class Article < ApplicationRecord
   end
 
   def self.search_optimized(tag = nil)
-    relation = Article.published.
-      order(updated_at: :desc).
-      where.not(search_optimized_title_preamble: nil).
-      limit(20)
+    relation = Article.published
+      .order(updated_at: :desc)
+      .where.not(search_optimized_title_preamble: nil)
+      .limit(20)
 
     fields = %i[path search_optimized_title_preamble comments_count created_at]
     if tag
@@ -252,7 +342,7 @@ class Article < ApplicationRecord
 
   def processed_description
     text_portion = body_text.present? ? body_text[0..100].tr("\n", " ").strip.to_s : ""
-    text_portion = text_portion.strip + "..." if body_text.size > 100
+    text_portion = "#{text_portion.strip}..." if body_text.size > 100
     return "A post by #{user.name}" if text_portion.blank?
 
     text_portion.strip
@@ -284,7 +374,7 @@ class Article < ApplicationRecord
   end
 
   def has_frontmatter?
-    fixed_body_markdown = MarkdownFixer.fix_all(body_markdown)
+    fixed_body_markdown = MarkdownProcessor::Fixer::FixAll.call(body_markdown)
     begin
       parsed = FrontMatterParser::Parser.new(:md).call(fixed_body_markdown)
       parsed.front_matter["title"].present?
@@ -317,7 +407,7 @@ class Article < ApplicationRecord
   end
 
   def readable_publish_date
-    relevant_date = crossposted_at.presence || published_at
+    relevant_date = displayable_published_at
     if relevant_date && relevant_date.year == Time.current.year
       relevant_date&.strftime("%b %e")
     else
@@ -329,7 +419,11 @@ class Article < ApplicationRecord
     return "" unless published
     return "" unless crossposted_at || published_at
 
-    (crossposted_at || published_at).utc.iso8601
+    displayable_published_at.utc.iso8601
+  end
+
+  def displayable_published_at
+    crossposted_at.presence || published_at
   end
 
   def series
@@ -345,29 +439,50 @@ class Article < ApplicationRecord
   def cloudinary_video_url
     return if video_thumbnail_url.blank?
 
-    ApplicationController.helpers.cloudinary(video_thumbnail_url, 880)
+    Images::Optimizer.call(video_thumbnail_url, width: 880, quality: 80)
   end
 
   def video_duration_in_minutes
-    minutes = video_duration_in_minutes_integer
-    seconds = video_duration_in_seconds.to_i % 60
-    seconds = "0#{seconds}" if seconds.to_s.size == 1
+    duration = ActiveSupport::Duration.build(video_duration_in_seconds.to_i).parts
 
-    hours = (video_duration_in_seconds.to_i / 3600)
-    minutes = "0#{minutes}" if hours.positive? && minutes < 10
-    hours < 1 ? "#{minutes}:#{seconds}" : "#{hours}:#{minutes}:#{seconds}"
-  end
+    # add default hours and minutes for the substitutions below
+    duration = duration.reverse_merge(seconds: 0, minutes: 0, hours: 0)
 
-  def video_duration_in_minutes_integer
-    (video_duration_in_seconds.to_i / 60) % 60
+    minutes_and_seconds = format("%<minutes>02d:%<seconds>02d", duration)
+    return minutes_and_seconds if duration[:hours] < 1
+
+    "#{duration[:hours]}:#{minutes_and_seconds}"
   end
 
   def update_score
-    new_score = reactions.sum(:points) + Reaction.where(reactable_id: user_id, reactable_type: "User").sum(:points)
-    update_columns(score: new_score,
+    self.score = reactions.sum(:points) + Reaction.where(reactable_id: user_id, reactable_type: "User").sum(:points)
+    update_columns(score: score,
                    comment_score: comments.sum(:score),
                    hotness_score: BlackBox.article_hotness_score(self),
                    spaminess_rating: BlackBox.calculate_spaminess(self))
+  end
+
+  def co_author_ids_list=(list_of_co_author_ids)
+    self.co_author_ids = list_of_co_author_ids.split(",").map(&:strip)
+  end
+
+  def plain_html
+    doc = Nokogiri::HTML.fragment(processed_html)
+    doc.search(".highlight__panel").each(&:remove)
+    doc.to_html
+  end
+
+  def followers
+    # This will return an array, but the items will NOT be ActiveRecord objects.
+    # The followers may also occasionally be nil because orphaned follows can possibly exist in the database.
+    followers = user.followers_scoped.where(subscription_status: "all_articles").map(&:follower)
+
+    if organization_id
+      org_followers = organization.followers_scoped.where(subscription_status: "all_articles")
+      followers += org_followers.map(&:follower)
+    end
+
+    followers.uniq.compact
   end
 
   private
@@ -396,13 +511,13 @@ class Article < ApplicationRecord
 
     self.cached_user_name = user_name
     self.cached_user_username = user_username
-    self.path = calculated_path
+    self.path = calculated_path.downcase
   end
 
   def evaluate_markdown
-    fixed_body_markdown = MarkdownFixer.fix_all(body_markdown || "")
+    fixed_body_markdown = MarkdownProcessor::Fixer::FixAll.call(body_markdown || "")
     parsed = FrontMatterParser::Parser.new(:md).call(fixed_body_markdown)
-    parsed_markdown = MarkdownParser.new(parsed.content, source: self, user: user)
+    parsed_markdown = MarkdownProcessor::Parser.new(parsed.content, source: self, user: user)
     self.reading_time = parsed_markdown.calculate_reading_time
     self.processed_html = parsed_markdown.finalize
 
@@ -414,25 +529,13 @@ class Article < ApplicationRecord
 
     self.description = processed_description if description.blank?
   rescue StandardError => e
-    errors[:base] << ErrorMessageCleaner.new(e.message).clean
+    errors.add(:base, ErrorMessages::Clean.call(e.message))
   end
 
   def set_tag_list(tags)
     self.tag_list = [] # overwrite any existing tag with those from the front matter
     tag_list.add(tags, parse: true)
     self.tag_list = tag_list.map { |tag| Tag.find_preferred_alias_for(tag) }
-  end
-
-  def update_main_image_background_hex
-    return if main_image.blank? || main_image_background_hex_color != "#dddddd"
-
-    Articles::UpdateMainImageBackgroundHexWorker.perform_async(id)
-  end
-
-  def detect_human_language
-    return if language.present?
-
-    update_column(:language, LanguageDetector.new(self).detect)
   end
 
   def async_score_calc
@@ -461,6 +564,7 @@ class Article < ApplicationRecord
 
   def before_destroy_actions
     bust_cache
+    touch_actor_latest_article_updated_at(destroying: true)
     article_ids = user.article_ids.dup
     if organization
       organization.touch(:last_article_at)
@@ -552,6 +656,24 @@ class Article < ApplicationRecord
     errors.add(:collection_id, "must be one you have permission to post to")
   end
 
+  def validate_co_authors
+    return if co_author_ids.exclude?(user_id)
+
+    errors.add(:co_author_ids, "must not be the same user as the author")
+  end
+
+  def validate_co_authors_must_not_be_the_same
+    return if co_author_ids.uniq.count == co_author_ids.count
+
+    errors.add(:base, "co-author IDs must be unique")
+  end
+
+  def validate_co_authors_exist
+    return if User.where(id: co_author_ids).count == co_author_ids.count
+
+    errors.add(:co_author_ids, "must be valid user IDs")
+  end
+
   def past_or_present_date
     return unless published_at && published_at > Time.current
 
@@ -562,6 +684,16 @@ class Article < ApplicationRecord
     return unless canonical_url.to_s.match?(/[[:space:]]/)
 
     errors.add(:canonical_url, "must not have spaces")
+  end
+
+  def user_mentions_in_markdown
+    return if created_at.present? && created_at.before?(MAX_USER_MENTION_LIVE_AT)
+
+    # The "mentioned-user" css is added by Html::Parser#user_link_if_exists
+    mentions_count = Nokogiri::HTML(processed_html).css(".mentioned-user").size
+    return if mentions_count <= MAX_USER_MENTIONS
+
+    errors.add(:base, "You cannot mention more than #{MAX_USER_MENTIONS} users in a post!")
   end
 
   def create_slug
@@ -584,23 +716,8 @@ class Article < ApplicationRecord
   end
 
   def update_cached_user
-    if organization
-      self.cached_organization = OpenStruct.new(set_cached_object(organization))
-    end
-
-    return unless user
-
-    self.cached_user = OpenStruct.new(set_cached_object(user))
-  end
-
-  def set_cached_object(object)
-    {
-      name: object.name,
-      username: object.username,
-      slug: object == organization ? object.slug : object.username,
-      profile_image_90: object.profile_image_90,
-      profile_image_url: object.profile_image_url
-    }
+    self.cached_organization = organization ? Articles::CachedEntity.from_object(organization) : nil
+    self.cached_user = user ? Articles::CachedEntity.from_object(user) : nil
   end
 
   def set_all_dates
@@ -634,32 +751,61 @@ class Article < ApplicationRecord
   def set_nth_published_at
     return unless nth_published_by_author.zero? && published
 
-    published_article_ids = user.articles.published.order(published_at: :asc).pluck(:id)
+    published_article_ids = user.articles.published.order(published_at: :asc).ids
     index = published_article_ids.index(id)
 
     self.nth_published_by_author = (index || published_article_ids.size) + 1
   end
 
   def title_to_slug
-    title.to_s.downcase.parameterize.tr("_", "") + "-" + rand(100_000).to_s(26)
+    "#{title.to_s.downcase.parameterize.tr('_', '')}-#{rand(100_000).to_s(26)}"
   end
 
   def clean_data
     self.canonical_url = nil if canonical_url == ""
   end
 
-  def bust_cache
-    return unless Rails.env.production?
+  def touch_actor_latest_article_updated_at(destroying: false)
+    return unless destroying || saved_changes.keys.intersection(%w[title cached_tag_list]).present?
 
-    CacheBuster.bust(path)
-    CacheBuster.bust("#{path}?i=i")
-    CacheBuster.bust("#{path}?preview=#{password}")
+    user.touch(:latest_article_updated_at)
+    organization&.touch(:latest_article_updated_at)
+  end
+
+  def bust_cache
+    cache_bust = EdgeCache::Bust.new
+    cache_bust.call(path)
+    cache_bust.call("#{path}?i=i")
+    cache_bust.call("#{path}?preview=#{password}")
     async_bust
+    touch_actor_latest_article_updated_at
   end
 
   def calculate_base_scores
     self.hotness_score = 1000 if hotness_score.blank?
     self.spaminess_rating = 0 if new_record?
+  end
+
+  def create_conditional_autovomits
+    return unless SiteConfig.spam_trigger_terms.any? { |term| Regexp.new(term.downcase).match?(title.downcase) }
+
+    Reaction.create(
+      user_id: SiteConfig.mascot_user_id,
+      reactable_id: id,
+      reactable_type: "Article",
+      category: "vomit",
+    )
+
+    return unless Reaction.article_vomits.where(reactable_id: user.articles.pluck(:id)).size > 2
+
+    user.add_role(:suspended)
+    Note.create(
+      author_id: SiteConfig.mascot_user_id,
+      noteable_id: user_id,
+      noteable_type: "User",
+      reason: "automatic_suspend",
+      content: "User suspended for too many spammy articles, triggered by autovomit.",
+    )
   end
 
   def async_bust

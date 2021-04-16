@@ -1,8 +1,8 @@
 class CodepenTag < LiquidTagBase
   PARTIAL = "liquids/codepen".freeze
   URL_REGEXP =
-    /\A(http|https):\/\/(codepen\.io|codepen\.io\/team)\/[a-zA-Z0-9_\-]{1,30}\/pen\/([a-zA-Z]{5,7})\/{0,1}\z/.
-      freeze
+    %r{\A(http|https)://(codepen\.io|codepen\.io/team)/[a-zA-Z0-9_\-]{1,30}/pen/([a-zA-Z]{5,7})/{0,1}\z}
+      .freeze
 
   def initialize(_tag_name, link, _parse_context)
     super
@@ -11,7 +11,7 @@ class CodepenTag < LiquidTagBase
   end
 
   def render(_context)
-    ActionController::Base.new.render_to_string(
+    ApplicationController.render(
       partial: PARTIAL,
       locals: {
         link: @link,
@@ -29,7 +29,7 @@ class CodepenTag < LiquidTagBase
 
   def parse_options(input)
     stripped_link = ActionController::Base.helpers.strip_tags(input)
-    _, *options = stripped_link.split(" ")
+    _, *options = stripped_link.split
 
     # Validation
     validated_options = options.map { |option| valid_option(option) }.reject(&:nil?)
@@ -42,7 +42,7 @@ class CodepenTag < LiquidTagBase
 
   def parse_link(link)
     stripped_link = ActionController::Base.helpers.strip_tags(link)
-    the_link = stripped_link.split(" ").first
+    the_link = stripped_link.split.first
     raise_error unless valid_link?(the_link)
     the_link.gsub("/pen/", "/embed/")
   end

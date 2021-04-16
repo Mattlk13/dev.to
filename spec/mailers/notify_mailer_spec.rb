@@ -16,22 +16,12 @@ RSpec.describe NotifyMailer, type: :mailer do
 
     it "renders proper sender" do
       expect(email.from).to eq([SiteConfig.email_addresses[:default]])
-      expected_from = "#{ApplicationConfig['COMMUNITY_NAME']} Community <#{SiteConfig.email_addresses[:default]}>"
+      expected_from = "#{SiteConfig.community_name} <#{SiteConfig.email_addresses[:default]}>"
       expect(email["from"].value).to eq(expected_from)
     end
 
     it "renders proper receiver" do
       expect(email.to).to eq([comment.user.email])
-    end
-
-    it "includes the tracking pixel" do
-      expect(email.html_part.body).to include("open.gif")
-    end
-
-    it "includes UTM params" do
-      expect(email.html_part.body).to include(CGI.escape("utm_medium=email"))
-      expect(email.html_part.body).to include(CGI.escape("utm_source=notify_mailer"))
-      expect(email.html_part.body).to include(CGI.escape("utm_campaign=new_reply_email"))
     end
   end
 
@@ -41,27 +31,17 @@ RSpec.describe NotifyMailer, type: :mailer do
     before { user2.follow(user) }
 
     it "renders proper subject" do
-      expect(email.subject).to eq("#{user2.name} just followed you on #{ApplicationConfig['COMMUNITY_NAME']}")
+      expect(email.subject).to eq("#{user2.name} just followed you on #{SiteConfig.community_name}")
     end
 
     it "renders proper sender" do
       expect(email.from).to eq([SiteConfig.email_addresses[:default]])
-      expected_from = "#{ApplicationConfig['COMMUNITY_NAME']} Community <#{SiteConfig.email_addresses[:default]}>"
+      expected_from = "#{SiteConfig.community_name} <#{SiteConfig.email_addresses[:default]}>"
       expect(email["from"].value).to eq(expected_from)
     end
 
     it "renders proper receiver" do
       expect(email.to).to eq([user.email])
-    end
-
-    it "includes the tracking pixel" do
-      expect(email.html_part.body).to include("open.gif")
-    end
-
-    it "includes UTM params" do
-      expect(email.html_part.body).to include(CGI.escape("utm_medium=email"))
-      expect(email.html_part.body).to include(CGI.escape("utm_source=notify_mailer"))
-      expect(email.html_part.body).to include(CGI.escape("utm_campaign=new_follower_email"))
     end
   end
 
@@ -75,22 +55,12 @@ RSpec.describe NotifyMailer, type: :mailer do
 
     it "renders proper sender" do
       expect(email.from).to eq([SiteConfig.email_addresses[:default]])
-      expected_from = "#{ApplicationConfig['COMMUNITY_NAME']} Community <#{SiteConfig.email_addresses[:default]}>"
+      expected_from = "#{SiteConfig.community_name} <#{SiteConfig.email_addresses[:default]}>"
       expect(email["from"].value).to eq(expected_from)
     end
 
     it "renders proper receiver" do
       expect(email.to).to eq([user2.email])
-    end
-
-    it "includes the tracking pixel" do
-      expect(email.html_part.body).to include("open.gif")
-    end
-
-    it "includes UTM params" do
-      expect(email.html_part.body).to include(CGI.escape("utm_medium=email"))
-      expect(email.html_part.body).to include(CGI.escape("utm_source=notify_mailer"))
-      expect(email.html_part.body).to include(CGI.escape("utm_campaign=new_mention_email"))
     end
   end
 
@@ -98,27 +68,17 @@ RSpec.describe NotifyMailer, type: :mailer do
     let(:email) { described_class.with(user: user).unread_notifications_email }
 
     it "renders proper subject" do
-      expect(email.subject).to eq("🔥 You have 0 unread notifications on #{ApplicationConfig['COMMUNITY_NAME']}")
+      expect(email.subject).to eq("🔥 You have 0 unread notifications on #{SiteConfig.community_name}")
     end
 
     it "renders proper sender" do
       expect(email.from).to eq([SiteConfig.email_addresses[:default]])
-      expected_from = "#{ApplicationConfig['COMMUNITY_NAME']} Community <#{SiteConfig.email_addresses[:default]}>"
+      expected_from = "#{SiteConfig.community_name} <#{SiteConfig.email_addresses[:default]}>"
       expect(email["from"].value).to eq(expected_from)
     end
 
     it "renders proper receiver" do
       expect(email.to).to eq([user.email])
-    end
-
-    it "includes the tracking pixel" do
-      expect(email.html_part.body).to include("open.gif")
-    end
-
-    it "includes UTM params" do
-      expect(email.html_part.body).to include(CGI.escape("utm_medium=email"))
-      expect(email.html_part.body).to include(CGI.escape("utm_source=notify_mailer"))
-      expect(email.html_part.body).to include(CGI.escape("utm_campaign=unread_notifications_email"))
     end
   end
 
@@ -131,22 +91,12 @@ RSpec.describe NotifyMailer, type: :mailer do
 
     it "renders proper sender" do
       expect(email.from).to eq([SiteConfig.email_addresses[:default]])
-      expected_from = "#{ApplicationConfig['COMMUNITY_NAME']} Community <#{SiteConfig.email_addresses[:default]}>"
+      expected_from = "#{SiteConfig.community_name} <#{SiteConfig.email_addresses[:default]}>"
       expect(email["from"].value).to eq(expected_from)
     end
 
     it "renders proper receiver" do
       expect(email.to).to eq([article.user.email])
-    end
-
-    it "includes the tracking pixel" do
-      expect(email.html_part.body).to include("open.gif")
-    end
-
-    it "includes UTM params" do
-      expect(email.html_part.body).to include(CGI.escape("utm_medium=email"))
-      expect(email.html_part.body).to include(CGI.escape("utm_source=notify_mailer"))
-      expect(email.html_part.body).to include(CGI.escape("utm_campaign=video_upload_complete_email"))
     end
   end
 
@@ -154,6 +104,10 @@ RSpec.describe NotifyMailer, type: :mailer do
     let(:badge) { create(:badge) }
     let(:badge_achievement) { create_badge_achievement(user, badge, user2) }
     let(:email) { described_class.with(badge_achievement: badge_achievement).new_badge_email }
+
+    let(:badge_with_credits) { create(:badge, credits_awarded: 7) }
+    let(:badge_achievement_with_credits) { create_badge_achievement(user, badge_with_credits, user2) }
+    let(:email_with_credits) { described_class.with(badge_achievement: badge_achievement_with_credits).new_badge_email }
 
     def create_badge_achievement(user, badge, rewarder)
       BadgeAchievement.create(
@@ -170,7 +124,7 @@ RSpec.describe NotifyMailer, type: :mailer do
 
     it "renders proper sender" do
       expect(email.from).to eq([SiteConfig.email_addresses[:default]])
-      expected_from = "#{ApplicationConfig['COMMUNITY_NAME']} Community <#{SiteConfig.email_addresses[:default]}>"
+      expected_from = "#{SiteConfig.community_name} <#{SiteConfig.email_addresses[:default]}>"
       expect(email["from"].value).to eq(expected_from)
     end
 
@@ -178,52 +132,80 @@ RSpec.describe NotifyMailer, type: :mailer do
       expect(email.to).to eq([user.email])
     end
 
-    context "when rendering the HTML email" do
-      it "includes the tracking pixel" do
-        expect(email.html_part.body).to include("open.gif")
-      end
-
-      it "includes UTM params" do
-        expect(email.html_part.body).to include(CGI.escape("utm_medium=email"))
-        expect(email.html_part.body).to include(CGI.escape("utm_source=notify_mailer"))
-        expect(email.html_part.body).to include(CGI.escape("utm_campaign=new_badge_email"))
-      end
-
-      it "includes the user URL" do
-        expect(email.html_part.body).to include(CGI.escape(URL.user(user)))
-      end
-
+    context "when rendering the HTML email for badge with credits" do
       it "includes the listings URL" do
-        expect(email.html_part.body).to include(
+        expect(email_with_credits.html_part.body).to include(
+          Rails.application.routes.url_helpers.listings_url(host: SiteConfig.app_domain),
+        )
+      end
+
+      it "includes the about listings URL" do
+        expect(email_with_credits.html_part.body).to include(
+          Rails.application.routes.url_helpers.about_listings_url(host: SiteConfig.app_domain),
+        )
+      end
+
+      it "includes number of credits" do
+        expect(email_with_credits.html_part.body).to include("7 new credits")
+      end
+    end
+
+    context "when rendering the text email for badge with credits" do
+      it "includes the listings URL" do
+        expect(email_with_credits.text_part.body).not_to include(
           CGI.escape(
-            Rails.application.routes.url_helpers.listings_url,
+            Rails.application.routes.url_helpers.listings_url(host: SiteConfig.app_domain),
           ),
         )
       end
 
       it "includes the about listings URL" do
-        expect(email.html_part.body).to include(
-          CGI.escape(Rails.application.routes.url_helpers.about_listings_url),
+        expect(email_with_credits.text_part.body).not_to include(
+          CGI.escape(Rails.application.routes.url_helpers.about_listings_url(host: SiteConfig.app_domain)),
+        )
+      end
+
+      it "includes number of credits" do
+        expect(email_with_credits.text_part.body).to include("7 new credits")
+      end
+    end
+
+    context "when rendering the HTML email for badge w/o credits" do
+      it "includes the user URL" do
+        expect(email.html_part.body).to include(URL.user(user))
+      end
+
+      it "doesn't include the listings URL" do
+        expect(email.html_part.body).not_to include(
+          CGI.escape(
+            Rails.application.routes.url_helpers.listings_url(host: SiteConfig.app_domain),
+          ),
+        )
+      end
+
+      it "doesn't include the about listings URL" do
+        expect(email.html_part.body).not_to include(
+          CGI.escape(Rails.application.routes.url_helpers.about_listings_url(host: SiteConfig.app_domain)),
         )
       end
 
       it "includes the rewarding_context_message in the email" do
         expect(email.html_part.body).to include("Hello <a")
-        expect(email.html_part.body).to include(CGI.escape(URL.url("/hey")))
+        expect(email.html_part.body).to include(URL.url("/hey"))
       end
 
       it "does not include the nil rewarding_context_message in the email" do
         allow(badge_achievement).to receive(:rewarding_context_message).and_return(nil)
 
         expect(email.html_part.body).not_to include("Hello <a")
-        expect(email.html_part.body).not_to include(CGI.escape(URL.url("/hey")))
+        expect(email.html_part.body).not_to include(URL.url("/hey"))
       end
 
       it "does not include the empty rewarding_context_message in the email" do
         allow(badge_achievement).to receive(:rewarding_context_message).and_return("")
 
         expect(email.html_part.body).not_to include("Hello <a")
-        expect(email.html_part.body).not_to include(CGI.escape(URL.url("/hey")))
+        expect(email.html_part.body).not_to include(URL.url("/hey"))
       end
     end
 
@@ -232,14 +214,16 @@ RSpec.describe NotifyMailer, type: :mailer do
         expect(email.text_part.body).to include(URL.user(user))
       end
 
-      it "includes the listings URL" do
-        expect(email.text_part.body).to include(
-          Rails.application.routes.url_helpers.listings_url,
+      it "doesn't include the listings URL" do
+        expect(email.text_part.body).not_to include(
+          Rails.application.routes.url_helpers.listings_url(host: SiteConfig.app_domain),
         )
       end
 
-      it "includes the about listings URL" do
-        expect(email.text_part.body).to include(Rails.application.routes.url_helpers.about_listings_url)
+      it "doesn't include the about listings URL" do
+        expect(email.text_part.body).not_to include(
+          Rails.application.routes.url_helpers.about_listings_url(host: SiteConfig.app_domain),
+        )
       end
 
       it "includes the rewarding_context_message in the email" do
@@ -268,7 +252,7 @@ RSpec.describe NotifyMailer, type: :mailer do
     let(:email_params) do
       {
         email_to: user.email,
-        email_subject: "#{ApplicationConfig['COMMUNITY_NAME']} Report Status Update",
+        email_subject: "#{SiteConfig.community_name} Report Status Update",
         email_body: "You've violated our code of conduct",
         email_type: "Reporter",
         feedback_message_id: feedback_message.id
@@ -277,27 +261,17 @@ RSpec.describe NotifyMailer, type: :mailer do
     let(:email) { described_class.with(email_params).feedback_message_resolution_email }
 
     it "renders proper subject" do
-      expect(email.subject).to eq("#{ApplicationConfig['COMMUNITY_NAME']} Report Status Update")
+      expect(email.subject).to eq("#{SiteConfig.community_name} Report Status Update")
     end
 
     it "renders proper sender" do
       expect(email.from).to eq([SiteConfig.email_addresses[:default]])
-      expected_from = "#{ApplicationConfig['COMMUNITY_NAME']} Community <#{SiteConfig.email_addresses[:default]}>"
+      expected_from = "#{SiteConfig.community_name} <#{SiteConfig.email_addresses[:default]}>"
       expect(email["from"].value).to eq(expected_from)
     end
 
     it "renders proper receiver" do
       expect(email.to).to eq([user.email])
-    end
-
-    it "includes the tracking pixel" do
-      expect(email.html_part.body).to include("open.gif")
-    end
-
-    it "includes UTM params" do
-      expect(email.html_part.body).to include(CGI.escape("utm_medium=email"))
-      expect(email.html_part.body).to include(CGI.escape("utm_source=notify_mailer"))
-      expect(email.html_part.body).to include(CGI.escape("utm_campaign=#{email_params[:email_type]}"))
     end
 
     it "tracks the feedback message ID after delivery" do
@@ -306,6 +280,36 @@ RSpec.describe NotifyMailer, type: :mailer do
       end
 
       expect(user.email_messages.last.feedback_message_id).to eq(feedback_message.id)
+    end
+
+    it "tracks the email_type as the UTM campaign" do
+      assert_emails 1 do
+        email.deliver_now
+      end
+
+      expect(user.email_messages.last.utm_campaign).to eq("Reporter")
+    end
+  end
+
+  describe "#feedback_response_email" do
+    let(:email) { described_class.with(email_to: user.email).feedback_response_email }
+
+    it "renders proper subject" do
+      expect(email.subject).to eq("Thanks for your report on #{SiteConfig.community_name}")
+    end
+
+    it "renders proper sender" do
+      expect(email.from).to eq([SiteConfig.email_addresses[:default]])
+      expected_from = "#{SiteConfig.community_name} <#{SiteConfig.email_addresses[:default]}>"
+      expect(email["from"].value).to eq(expected_from)
+    end
+
+    it "renders proper receiver" do
+      expect(email.to).to eq([user.email])
+    end
+
+    it "renders proper body" do
+      expect(email.html_part.body).to include("Thank you for flagging content")
     end
   end
 
@@ -325,25 +329,17 @@ RSpec.describe NotifyMailer, type: :mailer do
 
     it "renders proper sender" do
       expect(email.from).to eq([SiteConfig.email_addresses[:default]])
-      expected_from = "#{ApplicationConfig['COMMUNITY_NAME']} Community <#{SiteConfig.email_addresses[:default]}>"
+      expected_from = "#{SiteConfig.community_name} <#{SiteConfig.email_addresses[:default]}>"
       expect(email["from"].value).to eq(expected_from)
     end
 
     it "renders proper receiver" do
       expect(email.to).to eq([user.email])
     end
-
-    it "includes the tracking pixel" do
-      expect(email.html_part.body).to include("open.gif")
-    end
-
-    it "includes UTM params" do
-      expect(email.html_part.body).to include(CGI.escape("utm_campaign=user_contact"))
-    end
   end
 
   describe "#new_message_email" do
-    let(:direct_channel) { ChatChannel.create_with_users(users: [user, user2], channel_type: "direct") }
+    let(:direct_channel) { ChatChannels::CreateWithUsers.call(users: [user, user2], channel_type: "direct") }
     let(:direct_message) { create(:message, user: user, chat_channel: direct_channel) }
     let(:email) { described_class.with(message: direct_message).new_message_email }
 
@@ -353,55 +349,35 @@ RSpec.describe NotifyMailer, type: :mailer do
 
     it "renders proper sender" do
       expect(email.from).to eq([SiteConfig.email_addresses[:default]])
-      expected_from = "#{ApplicationConfig['COMMUNITY_NAME']} Community <#{SiteConfig.email_addresses[:default]}>"
+      expected_from = "#{SiteConfig.community_name} <#{SiteConfig.email_addresses[:default]}>"
       expect(email["from"].value).to eq(expected_from)
     end
 
     it "renders proper receiver" do
       expect(email.to).to eq([direct_message.direct_receiver.email])
     end
-
-    it "includes the tracking pixel" do
-      expect(email.html_part.body).to include("open.gif")
-    end
-
-    it "includes UTM params" do
-      expect(email.html_part.body).to include(CGI.escape("utm_medium=email"))
-      expect(email.html_part.body).to include(CGI.escape("utm_source=notify_mailer"))
-      expect(email.html_part.body).to include(CGI.escape("utm_campaign=new_message_email"))
-    end
   end
 
   describe "#account_deleted_email" do
-    let(:email) { described_class.with(user: user).account_deleted_email }
+    let(:email) { described_class.with(name: user.name, email: user.email).account_deleted_email }
 
     it "renders proper subject" do
-      expect(email.subject).to eq("#{ApplicationConfig['COMMUNITY_NAME']} - Account Deletion Confirmation")
+      expect(email.subject).to eq("#{SiteConfig.community_name} - Account Deletion Confirmation")
     end
 
     it "renders proper sender" do
       expect(email.from).to eq([SiteConfig.email_addresses[:default]])
-      expected_from = "#{ApplicationConfig['COMMUNITY_NAME']} Community <#{SiteConfig.email_addresses[:default]}>"
+      expected_from = "#{SiteConfig.community_name} <#{SiteConfig.email_addresses[:default]}>"
       expect(email["from"].value).to eq(expected_from)
     end
 
     it "renders proper receiver" do
       expect(email.to).to eq([user.email])
     end
-
-    it "includes the tracking pixel" do
-      expect(email.html_part.body).to include("open.gif")
-    end
-
-    it "does not include UTM params" do
-      expect(email.html_part.body).not_to include(CGI.escape("utm_medium=email"))
-      expect(email.html_part.body).not_to include(CGI.escape("utm_source=notify_mailer"))
-      expect(email.html_part.body).not_to include(CGI.escape("utm_campaign=account_deleted_email"))
-    end
   end
 
   describe "#export_email" do
-    let(:email) { described_class.with(user: user, attachment: "attachment").export_email }
+    let(:email) { described_class.with(email: user.email, attachment: "attachment").export_email }
 
     it "renders proper subject" do
       expect(email.subject).to include("export of your content is ready")
@@ -409,7 +385,7 @@ RSpec.describe NotifyMailer, type: :mailer do
 
     it "renders proper sender" do
       expect(email.from).to eq([SiteConfig.email_addresses[:default]])
-      expected_from = "#{ApplicationConfig['COMMUNITY_NAME']} Community <#{SiteConfig.email_addresses[:default]}>"
+      expected_from = "#{SiteConfig.community_name} <#{SiteConfig.email_addresses[:default]}>"
       expect(email["from"].value).to eq(expected_from)
     end
 
@@ -425,16 +401,6 @@ RSpec.describe NotifyMailer, type: :mailer do
       expected_filename = "devto-export-#{Date.current.iso8601}.zip"
       expect(email.attachments[0].filename).to eq(expected_filename)
     end
-
-    it "includes the tracking pixel" do
-      expect(email.html_part.body).to include("open.gif")
-    end
-
-    it "includes UTM params" do
-      expect(email.html_part.body).to include(CGI.escape("utm_medium=email"))
-      expect(email.html_part.body).to include(CGI.escape("utm_source=notify_mailer"))
-      expect(email.html_part.body).to include(CGI.escape("utm_campaign=export_email"))
-    end
   end
 
   describe "#tag_moderator_confirmation_email" do
@@ -449,22 +415,12 @@ RSpec.describe NotifyMailer, type: :mailer do
 
     it "renders proper sender" do
       expect(email.from).to eq([SiteConfig.email_addresses[:default]])
-      expected_from = "#{ApplicationConfig['COMMUNITY_NAME']} Community <#{SiteConfig.email_addresses[:default]}>"
+      expected_from = "#{SiteConfig.community_name} <#{SiteConfig.email_addresses[:default]}>"
       expect(email["from"].value).to eq(expected_from)
     end
 
     it "renders proper receiver" do
       expect(email.to).to eq([user.email])
-    end
-
-    it "includes the tracking pixel" do
-      expect(email.html_part.body).to include("open.gif")
-    end
-
-    it "includes UTM params" do
-      expect(email.html_part.body).to include(CGI.escape("utm_medium=email"))
-      expect(email.html_part.body).to include(CGI.escape("utm_source=notify_mailer"))
-      expect(email.html_part.body).to include(CGI.escape("utm_campaign=tag_moderator_confirmation_email"))
     end
   end
 
@@ -473,28 +429,18 @@ RSpec.describe NotifyMailer, type: :mailer do
     let(:email) { described_class.with(user: user).trusted_role_email }
 
     it "renders proper subject" do
-      expected_subject = "You've been upgraded to #{ApplicationConfig['COMMUNITY_NAME']} Community mod status!"
+      expected_subject = "Congrats! You're now a \"trusted\" user on #{SiteConfig.community_name}!"
       expect(email.subject).to eq(expected_subject)
     end
 
     it "renders proper sender" do
       expect(email.from).to eq([SiteConfig.email_addresses[:default]])
-      expected_from = "#{ApplicationConfig['COMMUNITY_NAME']} Community <#{SiteConfig.email_addresses[:default]}>"
+      expected_from = "#{SiteConfig.community_name} <#{SiteConfig.email_addresses[:default]}>"
       expect(email["from"].value).to eq(expected_from)
     end
 
     it "renders proper receiver" do
       expect(email.to).to eq([user.email])
-    end
-
-    it "includes the tracking pixel" do
-      expect(email.html_part.body).to include("open.gif")
-    end
-
-    it "includes UTM params" do
-      expect(email.html_part.body).to include(CGI.escape("utm_medium=email"))
-      expect(email.html_part.body).to include(CGI.escape("utm_source=notify_mailer"))
-      expect(email.html_part.body).to include(CGI.escape("utm_campaign=trusted_role_email"))
     end
   end
 
@@ -513,7 +459,7 @@ RSpec.describe NotifyMailer, type: :mailer do
     end
 
     it "renders proper sender" do
-      expected_from = "#{ApplicationConfig['COMMUNITY_NAME']} Community <#{SiteConfig.email_addresses[:default]}>"
+      expected_from = "#{SiteConfig.community_name} <#{SiteConfig.email_addresses[:default]}>"
 
       expect(moderator_email.from).to eq([SiteConfig.email_addresses[:default]])
       expect(moderator_email["from"].value).to eq(expected_from)

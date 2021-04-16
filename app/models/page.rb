@@ -8,9 +8,9 @@ class Page < ApplicationRecord
   validate :body_present
   validate :unique_slug_including_users_and_orgs, if: :slug_changed?
 
+  before_validation :set_default_template
   before_save :evaluate_markdown
   after_save :bust_cache
-  before_validation :set_default_template
 
   mount_uploader :social_image, ProfileImageUploader
   resourcify
@@ -27,7 +27,7 @@ class Page < ApplicationRecord
 
   def evaluate_markdown
     if body_markdown.present?
-      parsed_markdown = MarkdownParser.new(body_markdown)
+      parsed_markdown = MarkdownProcessor::Parser.new(body_markdown)
       self.processed_html = parsed_markdown.finalize
     else
       self.processed_html = body_html

@@ -1,6 +1,8 @@
 class Identity < ApplicationRecord
+  NO_EMAIL_MSG = "No email found. Please relink your %<provider>s " \
+                 "account to avoid errors.".freeze
+
   belongs_to :user
-  has_many :backup_data, as: :instance, class_name: "BackupData", dependent: :destroy
 
   scope :enabled, -> { where(provider: Authentication::Providers.enabled) }
 
@@ -18,7 +20,7 @@ class Identity < ApplicationRecord
                                                               identity.user_id_changed? || identity.provider_changed?
                                                             }
 
-  # TODO: [thepracticaldev/oss] should this be transitioned to JSON?
+  # TODO: [@forem/oss] should this be transitioned to JSON?
   serialize :auth_data_dump
 
   # Builds an identity from OmniAuth's authentication payload
@@ -40,6 +42,6 @@ class Identity < ApplicationRecord
   end
 
   def email
-    auth_data_dump.info.email
+    auth_data_dump&.info&.email || format(NO_EMAIL_MSG, provider: provider)
   end
 end

@@ -13,27 +13,48 @@ class Comment < ApplicationRecord
   TITLE_DELETED = "[deleted]".freeze
   TITLE_HIDDEN = "[hidden by post author]".freeze
 
+  # TODO: Vaidehi Joshi - Extract this into a constant or SiteConfig variable
+  # after https://github.com/forem/rfcs/pull/22 has been completed?
+  MAX_USER_MENTIONS = 7 # Explicitly set to 7 to accommodate DEV Top 7 Posts
+  # The date that we began limiting the number of user mentions in a comment.
+  MAX_USER_MENTION_LIVE_AT = Time.utc(2021, 3, 12).freeze
+
   belongs_to :commentable, polymorphic: true, optional: true
-  counter_culture :commentable
   belongs_to :user
+
+  counter_culture :commentable
   counter_culture :user
+
   has_many :mentions, as: :mentionable, inverse_of: :mentionable, dependent: :destroy
   has_many :notifications, as: :notifiable, inverse_of: :notifiable, dependent: :delete_all
   has_many :notification_subscriptions, as: :notifiable, inverse_of: :notifiable, dependent: :destroy
 
   before_validation :evaluate_markdown, if: -> { body_markdown }
-  validate :permissions, if: :commentable
+  before_save :set_markdown_character_count, if: :body_markdown
+  before_save :synchronous_spam_score_check
+  before_create :adjust_comment_parent_based_on_depth
+  after_create :after_create_checks
+  after_create :notify_slack_channel_about_warned_users
+  after_update :update_descendant_notifications, if: :deleted
+  after_update :remove_notifications, if: :remove_notifications?
+  before_destroy :before_destroy_actions
+  after_destroy :after_destroy_actions
+
+  after_save :create_conditional_autovomits
+  after_save :synchronous_bust
+  after_save :bust_cache
+
+  validate :published_article, if: :commentable
+  validate :user_mentions_in_markdown
   validates :body_markdown, presence: true, length: { in: BODY_MARKDOWN_SIZE_RANGE }
   validates :body_markdown, uniqueness: { scope: %i[user_id ancestry commentable_id commentable_type] }
-  validates :commentable_id, presence: true
-  validates :commentable_type, inclusion: { in: COMMENTABLE_TYPES }
+  validates :commentable_id, presence: true, if: :commentable_type
+  validates :commentable_type, inclusion: { in: COMMENTABLE_TYPES }, if: :commentable_id
+  validates :positive_reactions_count, presence: true
+  validates :public_reactions_count, presence: true
+  validates :reactions_count, presence: true
   validates :user_id, presence: true
 
-  before_create :adjust_comment_parent_based_on_depth
-  before_save :set_markdown_character_count, if: :body_markdown
-
-  after_create :notify_slack_channel_about_warned_users
-  after_create :after_create_checks
   after_create_commit :record_field_test_event
   after_create_commit :send_email_notification, if: :should_send_email_notification?
   after_create_commit :create_first_reaction
@@ -42,15 +63,8 @@ class Comment < ApplicationRecord
   after_commit :calculate_score, on: %i[create update]
   after_commit :index_to_elasticsearch, on: %i[create update]
 
-  after_save :bust_cache
-  after_save :synchronous_bust
-
-  after_update :remove_notifications, if: :deleted
-  after_update :update_descendant_notifications, if: :deleted
   after_update_commit :update_notifications, if: proc { |comment| comment.saved_changes.include? "body_markdown" }
 
-  after_destroy  :after_destroy_actions
-  before_destroy :before_destroy_actions
   after_commit :remove_from_elasticsearch, on: [:destroy]
 
   scope :eager_load_serialized_data, -> { includes(:user, :commentable) }
@@ -80,9 +94,9 @@ class Comment < ApplicationRecord
   end
 
   def parent_type
-    parent_or_root_article.class.name.downcase.
-      gsub("article", "post").
-      gsub("podcastepisode", "episode")
+    parent_or_root_article.class.name.downcase
+      .gsub("article", "post")
+      .gsub("podcastepisode", "episode")
   end
 
   def id_code_generated
@@ -92,7 +106,7 @@ class Comment < ApplicationRecord
   end
 
   def custom_css
-    MarkdownParser.new(body_markdown).tags_used.map do |tag|
+    MarkdownProcessor::Parser.new(body_markdown).tags_used.map do |tag|
       Rails.application.assets["ltags/#{tag}.css"].to_s
     end.join
   end
@@ -123,7 +137,7 @@ class Comment < ApplicationRecord
   end
 
   def safe_processed_html
-    processed_html.html_safe
+    processed_html.html_safe # rubocop:disable Rails/OutputSafety
   end
 
   def root_exists?
@@ -131,6 +145,10 @@ class Comment < ApplicationRecord
   end
 
   private
+
+  def remove_notifications?
+    deleted? || hidden_by_commentable_user?
+  end
 
   def update_notifications
     Notification.update_notifications(self)
@@ -151,8 +169,8 @@ class Comment < ApplicationRecord
   end
 
   def evaluate_markdown
-    fixed_body_markdown = MarkdownFixer.fix_for_comment(body_markdown)
-    parsed_markdown = MarkdownParser.new(fixed_body_markdown, source: self, user: user)
+    fixed_body_markdown = MarkdownProcessor::Fixer::FixForComment.call(body_markdown)
+    parsed_markdown = MarkdownProcessor::Parser.new(fixed_body_markdown, source: self, user: user)
     self.processed_html = parsed_markdown.finalize(link_attributes: { rel: "nofollow" })
     wrap_timestamps_if_video_present! if commentable
     shorten_urls!
@@ -174,10 +192,10 @@ class Comment < ApplicationRecord
     doc = Nokogiri::HTML.fragment(processed_html)
     doc.css("a").each do |anchor|
       unless anchor.to_s.include?("<img") || anchor.attr("class")&.include?("ltag")
-        anchor.content = strip_url(anchor.content) unless anchor.to_s.include?("<img")
+        anchor.content = strip_url(anchor.content) unless anchor.to_s.include?("<img") # rubocop:disable Style/SoleNestedConditional
       end
     end
-    self.processed_html = doc.to_html.html_safe
+    self.processed_html = doc.to_html.html_safe # rubocop:disable Rails/OutputSafety
   end
 
   def calculate_score
@@ -227,12 +245,43 @@ class Comment < ApplicationRecord
   def synchronous_bust
     commentable.touch(:last_comment_at) if commentable.respond_to?(:last_comment_at)
     user.touch(:last_comment_at)
-    CacheBuster.bust(commentable.path.to_s) if commentable
+    EdgeCache::Bust.call(commentable.path.to_s) if commentable
     expire_root_fragment
   end
 
   def send_email_notification
     Comments::SendEmailNotificationWorker.perform_async(id)
+  end
+
+  def synchronous_spam_score_check
+    return unless
+      SiteConfig.spam_trigger_terms.any? { |term| Regexp.new(term.downcase).match?(title.downcase) }
+
+    self.score = -1 # ensure notification is not sent if possibly spammy
+  end
+
+  def create_conditional_autovomits
+    return unless
+      SiteConfig.spam_trigger_terms.any? { |term| Regexp.new(term.downcase).match?(title.downcase) } &&
+        user.registered_at > 5.days.ago
+
+    Reaction.create(
+      user_id: SiteConfig.mascot_user_id,
+      reactable_id: id,
+      reactable_type: "Comment",
+      category: "vomit",
+    )
+
+    return unless Reaction.comment_vomits.where(reactable_id: user.comments.pluck(:id)).size > 2
+
+    user.add_role(:suspended)
+    Note.create(
+      author_id: SiteConfig.mascot_user_id,
+      noteable_id: user_id,
+      noteable_type: "User",
+      reason: "automatic_suspend",
+      content: "User suspended for too many spammy articles, triggered by autovomit.",
+    )
   end
 
   def should_send_email_notification?
@@ -257,12 +306,25 @@ class Comment < ApplicationRecord
     self.markdown_character_count = body_markdown.size
   end
 
-  def permissions
+  def published_article
     errors.add(:commentable_id, "is not valid.") if commentable_type == "Article" && !commentable.published
   end
 
+  def user_mentions_in_markdown
+    return if created_at.present? && created_at.before?(MAX_USER_MENTION_LIVE_AT)
+
+    # The "mentioned-user" css is added by Html::Parser#user_link_if_exists
+    mentions_count = Nokogiri::HTML(processed_html).css(".mentioned-user").size
+    return if mentions_count <= MAX_USER_MENTIONS
+
+    errors.add(:base, "You cannot mention more than #{MAX_USER_MENTIONS} users in a comment!")
+  end
+
   def record_field_test_event
-    Users::RecordFieldTestEventWorker.perform_async(user_id, :user_home_feed, "user_creates_comment")
+    return if FieldTest.config["experiments"].nil?
+
+    Users::RecordFieldTestEventWorker
+      .perform_async(user_id, "user_creates_comment")
   end
 
   def notify_slack_channel_about_warned_users

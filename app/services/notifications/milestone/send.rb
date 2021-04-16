@@ -11,8 +11,8 @@ module Notifications
         @next_milestone = next_milestone
       end
 
-      def self.call(*args)
-        new(*args).call
+      def self.call(...)
+        new(...).call
       end
 
       def call
@@ -38,7 +38,8 @@ module Notifications
       end
 
       def json_data
-        { article: Notifications.article_data(article), gif_id: RandomGif.random_id }
+        gif_id = Constants::RandomGifs::IDS.sample
+        { article: Notifications.article_data(article), gif_id: gif_id }
       end
 
       def article_published_behind_time?
@@ -55,9 +56,10 @@ module Notifications
           action: "Milestone::#{type}::#{@next_milestone}",
         )
 
-        if type == "View"
+        case type
+        when "View"
           last_milestone_notification.blank? && article.page_views_count > @next_milestone
-        elsif type == "Reaction"
+        when "Reaction"
           last_milestone_notification.blank? && article.public_reactions_count > @next_milestone
         end
       end

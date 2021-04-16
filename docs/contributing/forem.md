@@ -19,20 +19,23 @@ contact the team with our [abuse report form](https://dev.to/report-abuse).
 
 ### Where to contribute
 
-All [issues](https://github.com/thepracticaldev/dev.to/issues) labeled
-[ready for dev](https://github.com/thepracticaldev/dev.to/issues?q=is%3Aissue+is%3Aopen+label%3A%22ready+for+dev%22)
+All [issues](https://github.com/forem/forem/issues) labeled
+[ready for dev](https://github.com/forem/forem/issues?q=is%3Aissue+is%3Aopen+label%3A%22ready+for+dev%22)
 and
-[type: bug](https://github.com/thepracticaldev/dev.to/issues?q=is%3Aissue+is%3Aopen+label%3A%22type%3A+bug%22)
-are up for grabs.
+[bug](https://github.com/forem/forem/issues?q=is%3Aissue+is%3Aopen+label%3A%22type%3A+bug%22+label%3Abug)
+are up for grabs. Please note that issues with the
+[Forem team](https://github.com/forem/forem/labels/Forem%20team) label are
+internal tasks that will be completed by a Forem
+[core team member](https://github.com/forem/forem/#core-team).
 
-- [good first issue](https://github.com/thepracticaldev/dev.to/issues?utf8=%E2%9C%93&q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22+)
+- [good first issue](https://github.com/forem/forem/issues?utf8=%E2%9C%93&q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22+)
   issues are meant for newer developers.
-- [difficulty: easy](https://github.com/thepracticaldev/dev.to/issues?q=is%3Aopen+is%3Aissue+label%3A%22difficulty%3A+easy%22)
+- [difficulty: easy](https://github.com/forem/forem/issues?q=is%3Aopen+is%3Aissue+label%3A%22difficulty%3A+easy%22)
   issues are usually confined to isolated areas of existing code.
-- [difficulty: medium](https://github.com/thepracticaldev/dev.to/issues?q=is%3Aopen+is%3Aissue+label%3A%22difficulty%3A+medium%22)
+- [difficulty: medium](https://github.com/forem/forem/issues?q=is%3Aopen+is%3Aissue+label%3A%22difficulty%3A+medium%22)
   issues sometimes entail new features and might affect a significant area of
   the codebase, but aren't overly complex.
-- [difficulty: hard](https://github.com/thepracticaldev/dev.to/issues?q=is%3Aopen+is%3Aissue+label%3A%22difficulty%3A+hard%22)
+- [difficulty: hard](https://github.com/forem/forem/issues?q=is%3Aopen+is%3Aissue+label%3A%22difficulty%3A+hard%22)
   issues are typically far-reaching, and might need architecture decisions
   during implementation. This label might also denote highly complex issues.
 
@@ -41,14 +44,14 @@ focus on changes that solve existing issues. We strongly encourage creating an
 issue before working on a PR!
 
 When in doubt, ask a
-[core team member](https://github.com/thepracticaldev/dev.to/#core-team) by
-mentioning us on the issue.
+[core team member](https://github.com/forem/forem/#core-team) by mentioning us
+on the issue.
 
 **Documentation** is almost always a great place to start contributing to a new
 project. Forem is an Open Source, community-driven project. Therefore, providing
 and maintaining quality documentation is one of our most important jobs. You can
 find more information in our
-[docs guide](https://docs.dev.to/contributing/docs)!
+[docs guide](https://docs.forem.com/contributing/docs)!
 
 **Refactoring**, which involves improving the code without modifying behavior,
 is a great place to help out! Generally speaking, you can rely on existing tests
@@ -63,25 +66,35 @@ issue exists, please claim that issue and link it in your PR, otherwise creating
 an issue is the best first step! Be sure to surround bug fixes with ample tests;
 bugs are magnets for other bugs. Write tests around bugs!
 
-**Building features** requires a lot of communication, but we'd love to have
-your help with this too! Features tend to be subjective and might spur some
-debate. Be sure to create an issue for new features before getting started! If
-your feature involves design changes, including design mockups can be very
-helpful. As always, when in doubt, ask!
+**Features** tend to be subjective and might spur some debate. The Forem core
+team uses an internal RFC ("request for comments") process to assess and
+prioritize new features. This process is intended to provide a consistent and
+standardized path for new changes to enter the Forem ecosystem. If you'd like to
+propose a new feature, please visit [forem.dev](https://forem.dev) to start a
+discussion around a new feature (or chime in on a pre-existing discussion!).
+
+There may be some open issues in our repository that we think evolve into
+impactful features. For such issues, we use the
+[potential RFC](https://github.com/forem/forem/labels/potential%20RFC) label in
+order to highlight the potential feature to the Forem core team members so that
+someone from the team can champion that feature.
+
+You can learn more about our internal RFC process and how we use forem.dev
+[here](https://forem.dev/foremteam/internal-rfc-process-and-forem-dev-discussions-3gl4)
 
 ### How to contribute
 
-1. [Fork the project](https://docs.dev.to/getting-started/forking/) and clone it
-   to your local machine. Follow the
-   [installation guide](https://docs.dev.to/installation/)!
+1. [Fork the project](https://docs.forem.com/getting-started/forking/) and clone
+   it to your local machine. Follow the
+   [installation guide](https://docs.forem.com/installation/)!
 2. Create a branch with your GitHub username and the ID of the
-   [issue](https://github.com/thepracticaldev/dev.to/issues), for example:
+   [issue](https://github.com/forem/forem/issues), for example:
    `git checkout -b USERNAME/some-new-feature-1234`
 3. Code and commit your changes. Bonus points if you write a
    [good commit message](https://chris.beams.io/posts/git-commit/):
    `git commit -m 'Add some feature'`
 4. Push to the branch: `git push -u origin USERNAME/some-new-feature-1234`
-5. [Create a pull request](https://docs.dev.to/getting-started/pull-request/)
+5. [Create a pull request](https://docs.forem.com/getting-started/pull-request/)
    for your branch. 🎉
 
 ## Contribution guidelines
@@ -100,7 +113,7 @@ discussion._
 
 Some areas of the project could use updated tests, and new features should
 always include test coverage. Please give our
-[testing guide](https://docs.dev.to/tests/) a read!
+[testing guide](https://docs.forem.com/tests/) a read!
 
 ### Code quality
 
@@ -112,6 +125,14 @@ More importantly, we avoid
 [wrong abstractions](https://www.sandimetz.com/blog/2016/1/20/the-wrong-abstraction).
 Code quality tools are not perfect, so don't obsess over your Code Climate
 score.
+
+### Consider accessibility in UI changes
+
+If the change you're proposing touches a user interface, include accessibility
+in your approach. This includes things like color contrast, keyboard
+accessibility, screen reader labels, and other common requirements. For more
+information, check out the
+[Forem Accessibility docs page](https://docs.forem.com/frontend/accessibility).
 
 ### Please use inclusive language
 
@@ -133,7 +154,7 @@ encourages more thoughtful code!
   [Draft PR](https://github.blog/2019-02-14-introducing-draft-pull-requests/)
   feature.
 - Make sure all tests pass and add additional tests for the code you submit.
-  [More info here](https://docs.dev.to/tests/).
+  [More info here](https://docs.forem.com/tests/).
 - Document your reasoning behind the changes. Explain why you wrote the code in
   the way you did. The code should explain what it does.
 - If there's an existing issue, reference to it by adding something like

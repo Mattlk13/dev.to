@@ -18,14 +18,13 @@ RSpec.describe CommentTag, type: :liquid_tag do
       liquid = generate_comment_tag(comment.id_code_generated)
 
       expect(liquid.render).to include(comment.body_markdown)
-      expect(liquid.render).to include(user.name)
+        .and include(user.name)
     end
 
-    it "raise error if comment ID does not exist" do
-      expect do
-        liquid = generate_comment_tag("this will fail")
-        liquid.render
-      end.to raise_error(StandardError)
+    it "renders 'Comment Not Found' message if comment ID does not exist" do
+      liquid = generate_comment_tag("nonexistent ID")
+
+      expect(liquid.render).to include("Comment Not Found")
     end
   end
 

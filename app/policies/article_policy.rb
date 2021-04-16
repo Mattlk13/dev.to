@@ -1,6 +1,10 @@
 class ArticlePolicy < ApplicationPolicy
   def update?
-    user_is_author? || user_admin? || user_org_admin? || minimal_admin?
+    user_author? || user_admin? || user_org_admin? || minimal_admin?
+  end
+
+  def admin_unpublish?
+    minimal_admin?
   end
 
   def new?
@@ -8,7 +12,7 @@ class ArticlePolicy < ApplicationPolicy
   end
 
   def create?
-    !user_is_banned?
+    !user_suspended?
   end
 
   def delete_confirm?
@@ -24,7 +28,7 @@ class ArticlePolicy < ApplicationPolicy
   end
 
   def stats?
-    user_is_author? || user_admin?
+    user_author? || user_admin?
   end
 
   def permitted_attributes
@@ -35,12 +39,12 @@ class ArticlePolicy < ApplicationPolicy
   end
 
   def subscriptions?
-    user_is_author? || user_admin?
+    user_author? || user_admin?
   end
 
   private
 
-  def user_is_author?
+  def user_author?
     if record.instance_of?(Article)
       record.user_id == user.id
     else

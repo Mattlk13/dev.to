@@ -19,14 +19,14 @@ RSpec.describe Slack::Messengers::CommentUserWarned, type: :service do
 
     it "contains the correct info", :aggregate_failures do
       sidekiq_assert_enqueued_jobs(1, only: Slack::Messengers::Worker) do
-        described_class.call(default_params)
+        described_class.call(**default_params)
       end
 
       job = sidekiq_enqueued_jobs(worker: Slack::Messengers::Worker).last
       message = job["args"].first["message"]
 
       internal_user_url = URL.url(
-        Rails.application.routes.url_helpers.internal_user_path(user),
+        Rails.application.routes.url_helpers.admin_user_path(user),
       )
 
       expect(message).to include(URL.comment(comment))
@@ -37,7 +37,7 @@ RSpec.describe Slack::Messengers::CommentUserWarned, type: :service do
 
     it "messages the proper channel with the proper username and emoji", :aggregate_failures do
       sidekiq_assert_enqueued_jobs(1, only: Slack::Messengers::Worker) do
-        described_class.call(default_params)
+        described_class.call(**default_params)
       end
 
       job = sidekiq_enqueued_jobs(worker: Slack::Messengers::Worker).last

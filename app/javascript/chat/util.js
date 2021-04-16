@@ -49,7 +49,7 @@ export function scrollToBottom() {
 }
 
 export function setupObserver(callback) {
-  const sentinel = document.querySelector('#messagelist__sentinel');
+  const sentinel = document.getElementById('messagelist__sentinel');
   const somethingObserver = new IntersectionObserver(callback, {
     threshold: [0, 1],
   });
@@ -118,7 +118,6 @@ export const createDataHash = (additionalFilters, searchParams) => {
   }
   dataHash.per_page = 30;
   dataHash.page = searchParams.paginationNumber;
-  dataHash.channel_text = searchParams.query;
   if (searchParams.searchType === 'discoverable') {
     dataHash.user_id = 'all';
   }

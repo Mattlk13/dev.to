@@ -1,7 +1,6 @@
 module Exporter
   class Articles
-    attr_reader :name
-    attr_reader :user
+    attr_reader :name, :user
 
     def initialize(user)
       @name = :articles
@@ -49,7 +48,6 @@ module Exporter
         cached_user_username
         comments_count
         description
-        language
         main_image
         main_image_background_hex_color
         path

@@ -5,6 +5,17 @@ import fetch from 'jest-fetch-mock';
 import { ReadingList } from '../readingList';
 
 describe('<ReadingList />', () => {
+  beforeAll(() => {
+    global.window.matchMedia = jest.fn((query) => {
+      return {
+        matches: false,
+        media: query,
+        addListener: jest.fn(),
+        removeListener: jest.fn(),
+      };
+    });
+  });
+
   const getMockResponse = () =>
     JSON.stringify({
       result: [
@@ -18,7 +29,7 @@ describe('<ReadingList />', () => {
             body_text: 'Some body text',
             class_name: 'Article',
             path: '/bobbytables/what-s-in-your-database-2d3f',
-            published_date_string: 'Jun 22',
+            readable_publish_date_string: 'Jun 22',
             reading_time: 0,
             tags: [
               {
@@ -34,7 +45,6 @@ describe('<ReadingList />', () => {
             user: {
               id: 318840,
               name: 'Bobby Tables',
-              pro: null,
               profile_image_90: 'https://picsum.photos/90/90',
               username: 'bobbytables',
             },
@@ -48,13 +58,11 @@ describe('<ReadingList />', () => {
   beforeEach(() => {
     global.fetch = fetch;
     global.getCsrfToken = jest.fn(() => 'this-is-a-csrf-token');
-    global.filterXSS = (text) => text;
   });
 
   afterEach(() => {
     delete global.fetch;
     delete global.getCsrfToken;
-    delete global.filterXSS;
   });
 
   it('should have no a11y violations', async () => {
@@ -64,17 +72,5 @@ describe('<ReadingList />', () => {
     const results = await axe(container);
 
     expect(results).toHaveNoViolations();
-  });
-
-  it('renders all the elements', () => {
-    const { queryByPlaceholderText, queryByText } = render(
-      <ReadingList availableTags={['discuss']} />,
-    );
-
-    expect(queryByPlaceholderText('search your list')).toBeDefined();
-    expect(queryByText('#discuss')).toBeDefined();
-    expect(queryByText('View Archive')).toBeDefined();
-    expect(queryByText('Your Archive List is Lonely')).toBeDefined();
-    expect(queryByText('Reading List (empty)')).toBeDefined();
   });
 });

@@ -9,10 +9,12 @@ class RateLimitChecker
     listing_creation: { retry_after: 60 },
     organization_creation: { retry_after: 300 },
     published_article_creation: { retry_after: 30 },
+    published_article_antispam_creation: { retry_after: 300 },
     reaction_creation: { retry_after: 30 },
     send_email_confirmation: { retry_after: 120 },
     user_subscription_creation: { retry_after: 30 },
-    user_update: { retry_after: 30 }
+    user_update: { retry_after: 30 },
+    comment_antispam_creation: { retry_after: 300 }
   }.with_indifferent_access.freeze
 
   def initialize(user = nil)
@@ -22,7 +24,7 @@ class RateLimitChecker
   class LimitReached < StandardError
     attr_reader :retry_after
 
-    def initialize(retry_after)
+    def initialize(retry_after) # rubocop:disable Lint/MissingSuper
       @retry_after = retry_after
     end
 
@@ -40,7 +42,7 @@ class RateLimitChecker
 
   def limit_by_action(action)
     check_method = "check_#{action}_limit"
-    result = respond_to?(check_method, true) ? send(check_method) : false
+    result = respond_to?(check_method, true) ? __send__(check_method) : false
 
     if result
       @action = action
@@ -85,8 +87,21 @@ class RateLimitChecker
   end
 
   def check_published_article_creation_limit
+    # TODO: Vaidehi Joshi - We should make this time frame configurable.
     user.articles.published.where("created_at > ?", 30.seconds.ago).size >
       SiteConfig.rate_limit_published_article_creation
+  end
+
+  def check_published_article_antispam_creation_limit
+    # TODO: Vaidehi Joshi - We should make this time frame configurable.
+    user.articles.published.where("created_at > ?", 5.minutes.ago).size >
+      SiteConfig.rate_limit_published_article_antispam_creation
+  end
+
+  def check_comment_antispam_creation_limit
+    # TODO: We should make this time frame configurable.
+    user.comments.where(created_at: 5.minutes.ago...).size >
+      SiteConfig.rate_limit_comment_antispam_creation
   end
 
   def check_follow_account_limit
@@ -102,6 +117,6 @@ class RateLimitChecker
   end
 
   def log_to_datadog
-    DatadogStatsClient.increment("rate_limit.limit_reached", tags: ["user:#{user.id}", "action:#{action}"])
+    ForemStatsClient.increment("rate_limit.limit_reached", tags: ["user:#{user.id}", "action:#{action}"])
   end
 end

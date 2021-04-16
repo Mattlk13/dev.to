@@ -1,14 +1,16 @@
 import { h } from 'preact';
 import PropTypes from 'prop-types';
-import Membership from './Membership';
+import { defaultMembershipPropType } from '../../common-prop-types/membership-prop-type';
 
-const RequestedMembershipSection = ({
+import { Membership } from './Membership';
+
+export const RequestedMembershipSection = ({
   requestedMemberships,
   removeMembership,
   chatChannelAcceptMembership,
   currentMembershipRole,
 }) => {
-  if (currentMembershipRole !== 'mod') {
+  if (currentMembershipRole === 'member') {
     return null;
   }
 
@@ -37,20 +39,8 @@ const RequestedMembershipSection = ({
 };
 
 RequestedMembershipSection.propTypes = {
-  requestedMemberships: PropTypes.arrayOf(
-    PropTypes.shape({
-      name: PropTypes.string.isRequired,
-      membership_id: PropTypes.number.isRequired,
-      user_id: PropTypes.number.isRequired,
-      role: PropTypes.string.isRequired,
-      image: PropTypes.string.isRequired,
-      username: PropTypes.string.isRequired,
-      status: PropTypes.string.isRequired,
-    }),
-  ).isRequired,
+  requestedMemberships: PropTypes.arrayOf(defaultMembershipPropType).isRequired,
   removeMembership: PropTypes.func.isRequired,
   chatChannelAcceptMembership: PropTypes.func.isRequired,
   currentMembershipRole: PropTypes.func.isRequired,
 };
-
-export default RequestedMembershipSection;

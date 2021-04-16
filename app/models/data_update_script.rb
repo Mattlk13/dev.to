@@ -2,16 +2,18 @@ class DataUpdateScript < ApplicationRecord
   DIRECTORY = Rails.root.join("lib/data_update_scripts").freeze
   NAMESPACE = "DataUpdateScripts".freeze
   STATUSES = { enqueued: 0, working: 1, succeeded: 2, failed: 3 }.freeze
-
-  default_scope { order(file_name: :asc) }
+  resourcify
 
   enum status: STATUSES
-  validates :file_name, uniqueness: true
+
+  validates :file_name, presence: true, uniqueness: true
+  validates :status, presence: true
 
   class << self
     def scripts_to_run
-      ids = load_script_ids
-      enqueued.where(id: ids)
+      insert_new_scripts
+
+      enqueued.order(file_name: :asc)
     end
 
     # true if there are more files on disk or any scripts to run, false otherwise
@@ -28,19 +30,17 @@ class DataUpdateScript < ApplicationRecord
 
     def filenames
       Dir.glob("*.rb", base: DIRECTORY).map do |f|
-        Pathname.new(f).basename(".rb").to_s
+        File.basename(f, ".rb")
       end
     end
 
-    def load_script_ids
-      # insert new scripts in bulk
+    def insert_new_scripts
       now = Time.current
       scripts_params = filenames.map do |fn|
         { file_name: fn, created_at: now, updated_at: now }
       end
-      DataUpdateScript.insert_all(scripts_params)
 
-      DataUpdateScript.pluck(:id)
+      DataUpdateScript.insert_all(scripts_params)
     end
   end
 
@@ -49,11 +49,15 @@ class DataUpdateScript < ApplicationRecord
   end
 
   def mark_as_finished!
-    update!(finished_at: Time.current, status: :succeeded)
+    update!(finished_at: Time.current, status: :succeeded, error: nil)
   end
 
-  def mark_as_failed!
-    update!(finished_at: Time.current, status: :failed)
+  def mark_as_failed!(err)
+    update!(
+      finished_at: Time.current,
+      status: :failed,
+      error: "#{err.class}: #{err.message}",
+    )
   end
 
   def file_path

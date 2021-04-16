@@ -6,8 +6,8 @@ module Broadcasts
         @notification_enqueued = false
       end
 
-      def self.call(*args)
-        new(*args).call
+      def self.call(...)
+        new(...).call
       end
 
       def call
@@ -51,7 +51,7 @@ module Broadcasts
       def send_feed_customization_notification
         return if
           user.created_at > 3.days.ago ||
-            user_is_following_tags? ||
+            user_following_tags? ||
             received_notification?(customize_feed_broadcast)
 
         Notification.send_welcome_notification(user.id, customize_feed_broadcast.id)
@@ -92,10 +92,13 @@ module Broadcasts
       end
 
       def authenticated_with_all_providers?
-        identities.count == SiteConfig.authentication_providers.count
+        # ga_providers refers to Generally Available (not in beta)
+        ga_providers = Authentication::Providers.enabled.reject { |sym| sym == :apple }
+        enabled_providers = identities.pluck(:provider).map(&:to_sym)
+        (ga_providers - enabled_providers).empty?
       end
 
-      def user_is_following_tags?
+      def user_following_tags?
         user.cached_followed_tag_names.count > 1
       end
 
@@ -124,13 +127,14 @@ module Broadcasts
       end
 
       def identities
-        @identities ||= user.identities.where(provider: SiteConfig.authentication_providers)
+        @identities ||= user.identities.enabled
       end
 
       def find_auth_broadcast
-        missing_identities = SiteConfig.authentication_providers.map do |provider|
+        missing_identities = Authentication::Providers.enabled.map do |provider|
           identities.exists?(provider: provider) ? nil : "#{provider}_connect"
         end.compact
+
         Broadcast.active.find_by!(title: "Welcome Notification: #{missing_identities.first}")
       end
 

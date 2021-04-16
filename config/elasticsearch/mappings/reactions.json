@@ -7,6 +7,9 @@
     "category": {
       "type": "keyword"
     },
+    "created_at": {
+      "type": "date"
+    },
     "last_indexed_at": {
       "type": "date"
     },
@@ -75,9 +78,6 @@
             },
             "profile_image_90": {
               "type": "keyword"
-            },
-            "pro": {
-              "type": "boolean"
             }
           }
         }

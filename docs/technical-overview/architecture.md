@@ -4,7 +4,7 @@
 
 Ruby on Rails is a web framework heavy on conventions over configuration. All
 else equal, we should try to follow Rails convention. We are currently on
-version 5.2.3, due for an upgrade to 6.x.x.
+version 6.x.x.
 
 ## We cache many content pages on the edge
 
@@ -22,33 +22,37 @@ We also use server-side caching: [Rails caching][rails_caching]. If you see
 `Rails.cache` or `<%= cache ... %>`, this is code affected in production by
 caching.
 
-## We use inline CSS and deferred scripts for usage performance improvements
+## Content precision
 
-To avoid blocking the initial render, we frequently write critical CSS inline,
-and we use the `defer` attribute to accelerate page loads. This practice results
-in a faster page load, and doesn't leave users waiting on heavy assets. However,
-this practice limits our ability to manipulate layout with JavaScript. As a
-rule, you should avoid relying on JavaScript for layout when working on DEV.
+In some situations we may want more precise content than in others. Often when
+we do not need a precise number, it offers an opportunity to either estimate the
+content or bust the cache less frequently.
+
+### Examples
+
+- We use the `estimated_count` for a more efficient query of registered users on
+  the home page. We have deemed that this is probably close enough.
+- On posts and comment trees without recent comments, we do not asynchronously
+  fetch the absolute latest individual reaction counts for logged-out users
+  because this number is likely to be correct without the async call, and if it
+  is off-by-one, we can make the choice that it is not important that it be more
+  precise than this.
+
+## We Mostly defer scripts for usage performance improvements
+
+To avoid blocking the initial render, we use the `defer` attribute to accelerate
+page renders. This practice results in a faster page load, and doesn't leave
+users waiting on heavy assets. However, this practice limits our ability to
+manipulate layout with JavaScript. As a rule, you should avoid relying on
+JavaScript for layout when working on Forem.
+
+We have also experimented with different techniques involving inline CSS
 
 ## We attempt to reduce our bundle size
 
 We use [PreactJS](/frontend/preact), a lightweight alternative to ReactJS, and
 we try to reduce our bundle size with
-[dynamic imports](frontend/dynamic-imports).
-
-## Service workers and shell architecture
-
-We make use of serviceworkers to cache portions of the page.
-
-We cache styles here as well as script fingerprinting, so we should increment
-the number in `/async_info/shell_version` any time we change core CSS or
-JavaScript.
-
-Serviceworkers can be controlled in the `application` tab of Chrome.
-Serviceworkers are a reverse proxy that runs in the browser in a non-blocking
-thread, supported by most major browsers. You may want to disable or bypass
-Serviceworkers in development while making changes to avoid having everything
-cached.
+[dynamic imports](/frontend/dynamic-imports).
 
 ## Worst technical debt
 
@@ -62,7 +66,7 @@ contributions from the community.
 
 We also have inconsistencies and issues with how we bust caching on the edge.
 Ideally, we could practice resource-based purging as described in the [Fastly
-Rails][fastly_rails] docs, but we bust specific URLs via `CacheBuster`.
+Rails][fastly_rails] docs, but we bust specific URLs via `EdgeCache::Bust#call`.
 
 ## The algorithm behind the feed
 
@@ -78,7 +82,7 @@ shared among all users.
 
 ## Inter-page navigation
 
-DEV uses a variation of "instant click", via
+Forem uses a variation of "instant click", via
 [InstantClick](/frontend/instant-click), which swaps out page content instead of
 making full-page requests. This approach is similar to the one used by the Rails
 gem `Turbolinks`, but our approach is more lightweight. The library is modified
@@ -103,6 +107,22 @@ differently than expected.
 Abstracting and removing these caveats is a long term goal, and contribution on
 that front is welcome!
 
+We use the parameter `i=i` (i for internal) to indicate to the backend that we
+only want the "internal" version of the page (the one without the top nav and
+footer, etc.)
+
+## URLS and constraints
+
+Because we use the top directory for user-generated pages, we need to be aware
+of some constraints. `some-forem.com/sophia` could be a user, a page, an
+organization, or a previously banished user. We allow users to retain two
+redirects and should use `:moved_permanently` when a user changes their
+username.
+
+Because we may silently insert `?i=i` on the frontend to indicate internal nav,
+we need to maintain that parameter if we are redirecting. We use the method
+`redirect_permanently_to(location)` to encompass all of this behavior.
+
 # General app concepts
 
 ## Articles (or posts)
@@ -111,6 +131,12 @@ Articles are the primary form of user generated content in the application. An
 Article has many comments and taggings through the acts-as-taggable gem, belongs
 to a single user (and possibly an organization), and is the core unit of
 content.
+
+## Collections (or series)
+
+Although the source code refers to them as "collections" groups of articles are
+referred to, throughout the user interface, as "series". They represent a
+collection of articles relating to the same topic, indeed, a series.
 
 ## Comments
 
@@ -124,6 +150,10 @@ infinitely branching threads.
 
 The user is the authorization/identity component of logging into the app. It is
 also the public profile/authorship/etc. belonging to the people who use the app.
+
+While "user" is a perfectly good technical name, it is a fairly cold way to
+refer to humans, so we should prefer labeling people as members, or by their
+name/username.
 
 ## Tags
 
@@ -150,7 +180,7 @@ The functionality of credits may be expanded in the future.
 
 Users can belong to organizations, which have their own profile pages where
 posts can be published etc. This can be any group endeavor such as a company, an
-open source project, or any standalone publication on DEV.
+open source project, or any standalone publication on Forem.
 
 ## Reactions
 
@@ -162,6 +192,11 @@ article in the user's reading list.
 
 How a user keeps track of the tags, users, or articles they care about. Follows
 impact a user's home feed and notifications.
+
+Follows can have a "score" which indicates how much a user wants to see the
+element in their feed. Currently we only calculate these for tag follows, but it
+could be expanded to users. The user can set an "explicit" score, and the system
+also calculates an "implicit" score based on their activity.
 
 ## Roles
 
@@ -181,10 +216,10 @@ Example: "This user was warned for spammy content".
 
 ## Pages
 
-`Pages` in the [internal dashboard](/internal/) represent static pages to be
-served on the site. Admins are in full control to create and customize them to
-their needs using markdown or custom HTML. Pages are configured with a `slug`
-and they will be served on either the `/page/slug` or `/slug` path.
+`Pages` in the [admin dashboard](/admin/) represent static pages to be served on
+the site. Admins are in full control to create and customize them to their needs
+using markdown or custom HTML. Pages are configured with a `slug` and they will
+be served on either the `/page/slug` or `/slug` path.
 
 In order to ease development of custom HTML Pages in local environments the rake
 task `pages:sync` is available. It will listen to changes made to a local HTML

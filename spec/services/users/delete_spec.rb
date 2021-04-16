@@ -1,9 +1,15 @@
 require "rails_helper"
 
 RSpec.describe Users::Delete, type: :service do
-  before { omniauth_mock_github_payload }
+  let(:cache_bust) { instance_double(EdgeCache::Bust) }
+  let(:user) { create(:user, :trusted, :with_identity, identities: ["github"]) }
 
-  let(:user) { create(:user, :with_identity, identities: ["github"]) }
+  before do
+    omniauth_mock_github_payload
+    allow(Settings::Authentication).to receive(:providers).and_return(Authentication::Providers.available)
+    allow(EdgeCache::Bust).to receive(:new).and_return(cache_bust)
+    allow(cache_bust).to receive(:call)
+  end
 
   it "deletes user" do
     described_class.call(user)
@@ -11,9 +17,16 @@ RSpec.describe Users::Delete, type: :service do
   end
 
   it "busts user profile page" do
-    allow(CacheBuster).to receive(:bust)
     described_class.new(user).call
-    expect(CacheBuster).to have_received(:bust).with("/#{user.username}")
+    expect(cache_bust).to have_received(:call).with("/#{user.username}")
+  end
+
+  it "deletes user's sponsorships" do
+    create(:sponsorship, user: user)
+
+    expect do
+      described_class.call(user)
+    end.to change(Sponsorship, :count).by(-1)
   end
 
   it "deletes user's follows" do
@@ -66,20 +79,6 @@ RSpec.describe Users::Delete, type: :service do
     expect { article.elasticsearch_doc }.to raise_error(Search::Errors::Transport::NotFound)
   end
 
-  it "removes reactions from Elasticsearch" do
-    article = create(:article, user: user)
-    reaction = create(:reaction, category: "readinglist", reactable: article)
-    user_reaction = create(:reaction, user_id: user.id, category: "readinglist")
-    sidekiq_perform_enqueued_jobs
-    expect(reaction.elasticsearch_doc).not_to be_nil
-    expect(user_reaction.elasticsearch_doc).not_to be_nil
-    sidekiq_perform_enqueued_jobs do
-      described_class.call(user)
-    end
-    expect { reaction.elasticsearch_doc }.to raise_error(Search::Errors::Transport::NotFound)
-    expect { user_reaction.elasticsearch_doc }.to raise_error(Search::Errors::Transport::NotFound)
-  end
-
   it "deletes field tests memberships" do
     create(:field_test_membership, participant_id: user.id)
 
@@ -93,8 +92,15 @@ RSpec.describe Users::Delete, type: :service do
   describe "deleting associations" do
     let(:kept_association_names) do
       %i[
-        affected_feedback_messages audit_logs created_podcasts notes
-        offender_feedback_messages reporter_feedback_messages
+        affected_feedback_messages
+        audit_logs
+        banished_users
+        created_podcasts
+        offender_feedback_messages
+        page_views
+        rating_votes
+        reporter_feedback_messages
+        tweets
       ]
     end
     let(:direct_associations) do
@@ -129,6 +135,8 @@ RSpec.describe Users::Delete, type: :service do
             next
           end
 
+          next if possible_factory_name == "invited_by"
+
           record = create(possible_factory_name, inverse_of => user)
           associations.push(record)
         end
@@ -162,18 +170,27 @@ RSpec.describe Users::Delete, type: :service do
   end
 
   context "when cleaning up chat channels" do
-    let_it_be(:other_user) { create(:user) }
+    let(:other_user) { create(:user) }
 
     it "deletes the user's private chat channels" do
-      chat_channel = ChatChannel.create_with_users(users: [user, other_user])
+      chat_channel = ChatChannels::CreateWithUsers.call(users: [user, other_user])
       described_class.call(user)
       expect(ChatChannel.find_by(id: chat_channel.id)).to be_nil
     end
 
     it "does not delete the user's open channels" do
-      chat_channel = ChatChannel.create_with_users(users: [user, other_user], channel_type: "open")
+      chat_channel = ChatChannels::CreateWithUsers.call(users: [user, other_user], channel_type: "open")
       described_class.call(user)
       expect(ChatChannel.find_by(id: chat_channel.id)).not_to be_nil
+    end
+  end
+
+  context "when the user was suspended" do
+    it "stores a hash of the username so the user can't sign up again" do
+      user = create(:user, :suspended)
+      expect do
+        described_class.call(user)
+      end.to change(Users::SuspendedUsername, :count).by(1)
     end
   end
 end

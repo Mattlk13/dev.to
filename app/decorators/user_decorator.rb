@@ -19,7 +19,8 @@ class UserDecorator < ApplicationDecorator
   ].freeze
 
   def cached_followed_tags
-    follows_map = Rails.cache.fetch("user-#{id}-#{last_followed_at&.rfc3339}/followed_tags", expires_in: 20.hours) do
+    follows_map = Rails.cache.fetch("user-#{id}-#{following_tags_count}-#{last_followed_at&.rfc3339}/followed_tags",
+                                    expires_in: 20.hours) do
       Follow.follower_tag(id).pluck(:followable_id, :points).to_h
     end
 
@@ -31,7 +32,7 @@ class UserDecorator < ApplicationDecorator
   end
 
   def darker_color(adjustment = 0.88)
-    HexComparer.new([enriched_colors[:bg], enriched_colors[:text]]).brightness(adjustment)
+    Color::CompareHex.new([enriched_colors[:bg], enriched_colors[:text]]).brightness(adjustment)
   end
 
   def enriched_colors
@@ -48,12 +49,16 @@ class UserDecorator < ApplicationDecorator
     end
   end
 
+  def config_font_name
+    config_font.gsub("default", SiteConfig.default_font)
+  end
+
   def config_body_class
     body_class = [
       config_theme.tr("_", "-"),
-      "#{config_font.tr('_', '-')}-article-body",
+      "#{config_font_name.tr('_', '-')}-article-body",
       "trusted-status-#{trusted}",
-      "#{config_navbar.tr('_', '-')}-navbar-config",
+      "#{config_navbar.tr('_', '-')}-header",
     ]
     body_class.join(" ")
   end
@@ -95,10 +100,17 @@ class UserDecorator < ApplicationDecorator
 
   # returns true if the user has been suspended and has no content
   def fully_banished?
-    articles_count.zero? && comments_count.zero? && banned
+    articles_count.zero? && comments_count.zero? && suspended?
   end
 
   def stackbit_integration?
     access_tokens.any?
+  end
+
+  def considered_new?
+    min_days = SiteConfig.user_considered_new_days
+    return false unless min_days.positive?
+
+    created_at.after?(min_days.days.ago)
   end
 end

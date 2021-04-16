@@ -1,7 +1,7 @@
 require "rails_helper"
 
 RSpec.describe UserDecorator, type: :decorator do
-  let_it_be_changeable(:saved_user) { create(:user) }
+  let(:saved_user) { create(:user) }
   let(:user) { build(:user) }
 
   context "with serialization" do
@@ -47,7 +47,7 @@ RSpec.describe UserDecorator, type: :decorator do
 
     it "returns adjusted points for tag" do
       follow = saved_user.follow(tag1)
-      follow.update(points: 0.1)
+      follow.update(explicit_points: 0.1)
       expect(saved_user.decorate.cached_followed_tags.first.points).to eq(0.1)
     end
   end
@@ -105,11 +105,27 @@ RSpec.describe UserDecorator, type: :decorator do
     end
   end
 
+  describe "#config_font_name" do
+    it "replaces 'default' with font configured for the site in SiteConfig" do
+      expect(user.config_font).to eq("default")
+      %w[sans_serif serif open_dyslexic].each do |font|
+        allow(SiteConfig).to receive(:default_font).and_return(font)
+        expect(user.decorate.config_font_name).to eq(font)
+      end
+    end
+
+    it "doesn't replace the user's custom selected font" do
+      user_comic_sans = create(:user, config_font: "comic_sans")
+      allow(SiteConfig).to receive(:default_font).and_return("open_dyslexic")
+      expect(user_comic_sans.decorate.config_font_name).to eq("comic_sans")
+    end
+  end
+
   describe "#config_body_class" do
     it "creates proper body class with defaults" do
       expected_result = %W[
-        default default-article-body
-        trusted-status-#{user.trusted} #{user.config_navbar}-navbar-config
+        default sans-serif-article-body
+        trusted-status-#{user.trusted} #{user.config_navbar}-header
       ].join(" ")
       expect(user.decorate.config_body_class).to eq(expected_result)
     end
@@ -118,7 +134,7 @@ RSpec.describe UserDecorator, type: :decorator do
       user.config_font = "sans_serif"
       expected_result = %W[
         default sans-serif-article-body
-        trusted-status-#{user.trusted} #{user.config_navbar}-navbar-config
+        trusted-status-#{user.trusted} #{user.config_navbar}-header
       ].join(" ")
       expect(user.decorate.config_body_class).to eq(expected_result)
     end
@@ -126,8 +142,8 @@ RSpec.describe UserDecorator, type: :decorator do
     it "creates proper body class with night theme" do
       user.config_theme = "night_theme"
       expected_result = %W[
-        night-theme default-article-body
-        trusted-status-#{user.trusted} #{user.config_navbar}-navbar-config
+        night-theme sans-serif-article-body
+        trusted-status-#{user.trusted} #{user.config_navbar}-header
       ].join(" ")
       expect(user.decorate.config_body_class).to eq(expected_result)
     end
@@ -135,8 +151,8 @@ RSpec.describe UserDecorator, type: :decorator do
     it "creates proper body class with pink theme" do
       user.config_theme = "pink_theme"
       expected_result = %W[
-        pink-theme default-article-body
-        trusted-status-#{user.trusted} #{user.config_navbar}-navbar-config
+        pink-theme sans-serif-article-body
+        trusted-status-#{user.trusted} #{user.config_navbar}-header
       ].join(" ")
       expect(user.decorate.config_body_class).to eq(expected_result)
     end
@@ -144,8 +160,8 @@ RSpec.describe UserDecorator, type: :decorator do
     it "creates proper body class with minimal light theme" do
       user.config_theme = "minimal_light_theme"
       expected_result = %W[
-        minimal-light-theme default-article-body
-        trusted-status-#{user.trusted} #{user.config_navbar}-navbar-config
+        minimal-light-theme sans-serif-article-body
+        trusted-status-#{user.trusted} #{user.config_navbar}-header
       ].join(" ")
       expect(user.decorate.config_body_class).to eq(expected_result)
     end
@@ -153,8 +169,8 @@ RSpec.describe UserDecorator, type: :decorator do
     it "works with static navbar" do
       user.config_navbar = "static"
       expected_result = %W[
-        default default-article-body
-        trusted-status-#{user.trusted} static-navbar-config
+        default sans-serif-article-body
+        trusted-status-#{user.trusted} static-header
       ].join(" ")
       expect(user.decorate.config_body_class).to eq(expected_result)
     end
@@ -166,8 +182,8 @@ RSpec.describe UserDecorator, type: :decorator do
         user.add_role(:trusted)
 
         expected_result = %w[
-          default default-article-body
-          trusted-status-true default-navbar-config
+          default sans-serif-article-body
+          trusted-status-true default-header
         ].join(" ")
         expect(user.decorate.config_body_class).to eq(expected_result)
       end
@@ -210,6 +226,22 @@ RSpec.describe UserDecorator, type: :decorator do
     it "returns true if the user has access tokens" do
       user.access_tokens.build
       expect(user.decorate.stackbit_integration?).to be(true)
+    end
+  end
+
+  describe "#considered_new?" do
+    before do
+      allow(SiteConfig).to receive(:user_considered_new_days).and_return(3)
+    end
+
+    it "returns true for new users" do
+      user.created_at = 1.day.ago
+      expect(user.decorate.considered_new?).to be(true)
+    end
+
+    it "returns false for new users" do
+      user.created_at = 1.year.ago
+      expect(user.decorate.considered_new?).to be(false)
     end
   end
 end

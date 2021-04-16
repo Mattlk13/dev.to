@@ -1,23 +1,17 @@
 # Utilities methods to safely build app wide URLs
 module URL
-  SERVICE_WORKER = "/serviceworker.js".freeze
-
   def self.protocol
     ApplicationConfig["APP_PROTOCOL"]
   end
 
   def self.domain
-    ApplicationConfig["APP_DOMAIN"]
+    if Rails.application&.initialized? && SiteConfig.respond_to?(:app_domain)
+      SiteConfig.app_domain
+    else
+      ApplicationConfig["APP_DOMAIN"]
+    end
   end
 
-  # Creates an app URL
-  #
-  # @note Uses protocol and domain specified in the environment, ensure they are set.
-  # @param uri [URI, String] parts we want to merge into the URL, e.g. path, fragment
-  # @example Retrieve the base URL
-  #  app_url #=> "https://dev.to"
-  # @example Add a path
-  #  app_url("internal") #=> "https://dev.to/internal"
   def self.url(uri = nil)
     base_url = "#{protocol}#{domain}"
     return base_url unless uri
@@ -64,22 +58,16 @@ module URL
     nil
   end
 
-  def self.organization(organization)
-    url(organization.slug)
+  # Creates an Image URL - a shortcut for the .image_url helper
+  #
+  # @param image_name [String] the image file name
+  # @param host [String] (optional) the host for the image URL you'd like to use
+  def self.local_image(image_name, host: nil)
+    host ||= ActionController::Base.asset_host || url(nil)
+    ActionController::Base.helpers.image_url(image_name, host: host)
   end
 
-  # Ensures we don't consider serviceworker.js as referer
-  #
-  # @param referer [String] the unsanitized referer
-  # @example A safe referer
-  #  sanitized_referer("/some/path") #=> "/some/path"
-  # @example serviceworker.js as referer
-  #  sanitized_referer("serviceworker.js") #=> nil
-  # @example An empty string
-  #  sanitized_referer("") #=> nil
-  def self.sanitized_referer(referer)
-    return if referer.blank? || URI(referer).path == SERVICE_WORKER
-
-    referer
+  def self.organization(organization)
+    url(organization.slug)
   end
 end

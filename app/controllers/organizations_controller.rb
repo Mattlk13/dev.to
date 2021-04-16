@@ -6,7 +6,6 @@ class OrganizationsController < ApplicationController
 
     @tab = "organization"
     @user = current_user
-    @tab_list = @user.settings_tab_list
 
     unless valid_image?
       render template: "users/edit"
@@ -29,7 +28,6 @@ class OrganizationsController < ApplicationController
   def update
     @user = current_user
     @tab = "organization"
-    @tab_list = @user.settings_tab_list
     set_organization
 
     unless valid_image?
@@ -38,6 +36,7 @@ class OrganizationsController < ApplicationController
     end
 
     if @organization.update(organization_params.merge(profile_updated_at: Time.current))
+      @organization.users.touch_all(:organization_info_updated_at)
       flash[:settings_notice] = "Your organization was successfully updated."
       redirect_to "/settings/organization"
     else
@@ -49,18 +48,37 @@ class OrganizationsController < ApplicationController
     end
   end
 
+  def destroy
+    organization = Organization.find_by(id: params[:id])
+    authorize organization
+    if organization.destroy
+      current_user.touch(:organization_info_updated_at)
+      EdgeCache::BustUser.call(current_user)
+      flash[:settings_notice] = "Your organization: \"#{organization.name}\" was successfully deleted."
+      redirect_to user_settings_path(:organization)
+    else
+      flash[:settings_notice] = "#{organization.errors.full_messages.to_sentence}.
+        Please email #{SiteConfig.email_addresses[:contact]} for assistance."
+      redirect_to user_settings_path(:organization, id: organization.id)
+    end
+  rescue Pundit::NotAuthorizedError
+    flash[:error] = "Your organization was not deleted; you must be an admin, the only member in the organization,
+      and have no articles connected to the organization."
+    redirect_to user_settings_path(:organization, id: organization.id)
+  end
+
   def generate_new_secret
     set_organization
     @organization.secret = @organization.generated_random_secret
     @organization.save
     flash[:settings_notice] = "Your org secret was updated"
-    redirect_to "/settings/organization"
+    redirect_to user_settings_path(:organization)
   end
 
   private
 
   def permitted_params
-    accessible = %i[
+    %i[
       id
       name
       summary
@@ -84,13 +102,12 @@ class OrganizationsController < ApplicationController
       cta_button_url
       cta_body_markdown
     ]
-    accessible
   end
 
   def organization_params
-    params.require(:organization).permit(permitted_params).
-      transform_values do |value|
-        if value.class.name == "String"
+    params.require(:organization).permit(permitted_params)
+      .transform_values do |value|
+        if value.instance_of?(String)
           ActionController::Base.helpers.strip_tags(value)
         else
           value

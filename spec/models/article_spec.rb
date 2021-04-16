@@ -7,28 +7,120 @@ RSpec.describe Article, type: :model do
     article
   end
 
-  let_it_be(:user) { create(:user) }
+  let(:user) { create(:user) }
   let!(:article) { create(:article, user: user) }
 
   include_examples "#sync_reactions_count", :article
   it_behaves_like "UserSubscriptionSourceable"
 
   describe "validations" do
-    it { is_expected.to validate_uniqueness_of(:canonical_url).allow_blank }
-    it { is_expected.to validate_uniqueness_of(:slug).scoped_to(:user_id) }
-    it { is_expected.to validate_uniqueness_of(:feed_source_url).allow_blank }
-    it { is_expected.to validate_presence_of(:title) }
-    it { is_expected.to validate_length_of(:title).is_at_most(128) }
-    it { is_expected.to validate_length_of(:cached_tag_list).is_at_most(126) }
-    it { is_expected.to belong_to(:user) }
-    it { is_expected.to belong_to(:organization).optional }
     it { is_expected.to belong_to(:collection).optional }
-    it { is_expected.to have_many(:comments) }
-    it { is_expected.to have_many(:reactions).dependent(:destroy) }
-    it { is_expected.to have_many(:notifications).dependent(:delete_all) }
+    it { is_expected.to belong_to(:organization).optional }
+    it { is_expected.to belong_to(:user) }
+
+    it { is_expected.to have_many(:comments).dependent(:nullify) }
+    it { is_expected.to have_many(:html_variant_successes).dependent(:nullify) }
+    it { is_expected.to have_many(:html_variant_trials).dependent(:nullify) }
     it { is_expected.to have_many(:notification_subscriptions).dependent(:destroy) }
+    it { is_expected.to have_many(:notifications).dependent(:delete_all) }
+    it { is_expected.to have_many(:page_views).dependent(:destroy) }
+    it { is_expected.to have_many(:polls).dependent(:destroy) }
+    it { is_expected.to have_many(:profile_pins).dependent(:destroy) }
+    it { is_expected.to have_many(:rating_votes).dependent(:destroy) }
+    it { is_expected.to have_many(:sourced_subscribers) }
+    it { is_expected.to have_many(:reactions).dependent(:destroy) }
+    it { is_expected.to have_many(:tags) }
+    it { is_expected.to have_many(:user_subscriptions).dependent(:nullify) }
+
+    it { is_expected.to validate_length_of(:cached_tag_list).is_at_most(126) }
+    it { is_expected.to validate_length_of(:title).is_at_most(128) }
+
+    it { is_expected.to validate_presence_of(:boost_states) }
+    it { is_expected.to validate_presence_of(:comments_count) }
+    it { is_expected.to validate_presence_of(:positive_reactions_count) }
+    it { is_expected.to validate_presence_of(:previous_public_reactions_count) }
+    it { is_expected.to validate_presence_of(:public_reactions_count) }
+    it { is_expected.to validate_presence_of(:rating_votes_count) }
+    it { is_expected.to validate_presence_of(:reactions_count) }
+    it { is_expected.to validate_presence_of(:user_subscriptions_count) }
+    it { is_expected.to validate_presence_of(:title) }
     it { is_expected.to validate_presence_of(:user_id) }
+
+    it { is_expected.to validate_uniqueness_of(:canonical_url).allow_nil }
+    it { is_expected.to validate_uniqueness_of(:feed_source_url).allow_nil }
+    it { is_expected.to validate_uniqueness_of(:slug).scoped_to(:user_id) }
+
     it { is_expected.not_to allow_value("foo").for(:main_image_background_hex_color) }
+
+    describe "::admin_published_with" do
+      it "includes mascot-published articles" do
+        allow(SiteConfig).to receive(:mascot_user_id).and_return(3)
+        user = create(:user, id: 3)
+        create(:article, user: user, tags: "challenge")
+        expect(described_class.admin_published_with("challenge").count).to eq(1)
+      end
+
+      it "includes staff-user-published articles" do
+        allow(SiteConfig).to receive(:staff_user_id).and_return(3)
+        user = create(:user, id: 3)
+        create(:article, user: user, tags: "challenge")
+        expect(described_class.admin_published_with("challenge").count).to eq(1)
+      end
+
+      it "includes admin published articles" do
+        user = create(:user, :admin)
+        create(:article, user: user, tags: "challenge")
+        expect(described_class.admin_published_with("challenge").count).to eq(1)
+      end
+
+      it "does not include regular user published articles" do
+        user = create(:user)
+        create(:article, user: user, tags: "challenge")
+        expect(described_class.admin_published_with("challenge").count).to eq(0)
+      end
+    end
+
+    describe "#body_markdown" do
+      it "is unique scoped for user_id and title" do
+        art2 = build(:article, body_markdown: article.body_markdown, user: article.user, title: article.title)
+
+        expect(art2).not_to be_valid
+        expect(art2.errors.full_messages.to_sentence).to match("markdown has already been taken")
+      end
+    end
+
+    describe "#validate co_authors" do
+      it "is invalid if the co_author is the same as the author" do
+        article.co_author_ids = [user.id]
+
+        expect(article).not_to be_valid
+      end
+
+      it "is invalid if there are duplicate co_authors for the same article" do
+        co_author1 = create(:user)
+        article.co_author_ids = [co_author1, co_author1]
+
+        expect(article).not_to be_valid
+      end
+
+      it "is invalid if the co_author is entered as a text value rather than an integer" do
+        article.co_author_ids = [user.id, "abc"]
+
+        expect(article).not_to be_valid
+      end
+
+      it "is invalid if the co_author ID is not greater than 0" do
+        article.co_author_ids = [user.id, 0]
+
+        expect(article).not_to be_valid
+      end
+
+      it "is valid if co_author_ids is nil" do
+        article.co_author_ids = nil
+
+        expect(article).to be_valid
+      end
+    end
 
     describe "#after_commit" do
       it "on update enqueues job to index article to elasticsearch" do
@@ -51,43 +143,6 @@ RSpec.describe Article, type: :model do
         allow(article).to receive(:sync_related_elasticsearch_docs)
         article.save
         expect(article).to have_received(:sync_related_elasticsearch_docs)
-      end
-    end
-
-    describe "#after_update_commit" do
-      it "if article is unpublished removes reading list reactions from index" do
-        reaction = create(:reaction, reactable: article, category: "readinglist")
-        sidekiq_perform_enqueued_jobs
-        expect(reaction.elasticsearch_doc).not_to be_nil
-
-        unpublished_body = "---\ntitle: Hellohnnnn#{rand(1000)}\npublished: false\ntags: hiring\n---\n\nHello"
-        article.update(body_markdown: unpublished_body)
-        sidekiq_perform_enqueued_jobs
-        expect { reaction.elasticsearch_doc }.to raise_error(Search::Errors::Transport::NotFound)
-      end
-
-      it "if article is published indexes reading list reactions" do
-        reaction = create(:reaction, reactable: article, category: "readinglist")
-        sidekiq_perform_enqueued_jobs
-        unpublished_body = "---\ntitle: Hellohnnnn#{rand(1000)}\npublished: false\ntags: hiring\n---\n\nHello"
-        article.update(body_markdown: unpublished_body)
-        sidekiq_perform_enqueued_jobs
-        expect { reaction.elasticsearch_doc }.to raise_error(Search::Errors::Transport::NotFound)
-
-        published_body = "---\ntitle: Hellohnnnn#{rand(1000)}\npublished: true\ntags: hiring\n---\n\nHello"
-        article.update(body_markdown: published_body)
-        sidekiq_perform_enqueued_jobs
-        expect(reaction.elasticsearch_doc).not_to be_nil
-      end
-
-      it "indexes reaction if a REACTION_INDEXED_FIELDS is changed" do
-        reaction = create(:reaction, reactable: article, category: "readinglist")
-        allow(article).to receive(:index_to_elasticsearch)
-        allow(article.user).to receive(:index_to_elasticsearch)
-
-        sidekiq_assert_enqueued_with(job: Search::IndexWorker, args: ["Reaction", reaction.id]) do
-          article.update(body_markdown: "---\ntitle: NEW TITLE#{rand(1000)}\n")
-        end
       end
     end
 
@@ -172,7 +227,7 @@ RSpec.describe Article, type: :model do
     end
 
     describe "liquid tags" do
-      it "is not valid if it contains invalid liquid tags" do
+      xit "is not valid if it contains invalid liquid tags" do
         body = "{% github /thepracticaldev/dev.to %}"
         article = build(:article, body_markdown: body)
         expect(article).not_to be_valid
@@ -381,7 +436,7 @@ RSpec.describe Article, type: :model do
 
   describe "#published_at" do
     it "does not have a published_at if not published" do
-      unpublished_article = build(:article, published: false)
+      unpublished_article = build(:article, published: false, published_at: nil)
       unpublished_article.validate # to make sure the front matter extraction happens
       expect(unpublished_article.published_at).to be_nil
     end
@@ -446,7 +501,7 @@ RSpec.describe Article, type: :model do
       article.update(body_markdown: body, approved: true)
 
       Timecop.travel(1.second.from_now) do
-        article.update(body_markdown: body + "s")
+        article.update(body_markdown: "#{body}s")
       end
 
       expect(article.featured_number).not_to eq(article.updated_at.to_i)
@@ -625,6 +680,22 @@ RSpec.describe Article, type: :model do
     end
   end
 
+  describe ".active_help" do
+    it "returns properly filtered articles under the 'help' tag" do
+      filtered_article = create(:article, user: user, tags: "help",
+                                          published_at: 13.hours.ago, comments_count: 5, score: -3)
+      articles = described_class.active_help
+      expect(articles).to include(filtered_article)
+    end
+
+    it "returns any published articles tagged with 'help' when there are no articles that fit the criteria" do
+      unfiltered_article = create(:article, user: user, tags: "help",
+                                            published_at: 10.hours.ago, comments_count: 8, score: -5)
+      articles = described_class.active_help
+      expect(articles).to include(unfiltered_article)
+    end
+  end
+
   describe ".seo_boostable" do
     let!(:top_article) do
       create(:article, organic_page_views_past_month_count: 20, score: 30, tags: "good, greatalicious", user: user)
@@ -691,6 +762,89 @@ RSpec.describe Article, type: :model do
     end
   end
 
+  describe ".cached_tagged_with" do
+    it "can search for a single tag" do
+      included = create(:article, tags: "includeme")
+      excluded = create(:article, tags: "lol, nope")
+
+      articles = described_class.cached_tagged_with("includeme")
+
+      expect(articles).to include included
+      expect(articles).not_to include excluded
+      expect(articles.to_a).to eq described_class.tagged_with("includeme").to_a
+    end
+
+    it "can search among multiple tags" do
+      included = [
+        create(:article, tags: "omg, wtf"),
+        create(:article, tags: "omg, lol"),
+      ]
+      excluded = create(:article, tags: "nope, excluded")
+
+      articles = described_class.cached_tagged_with("omg")
+
+      expect(articles).to include(*included)
+      expect(articles).not_to include excluded
+      expect(articles.to_a).to include(*described_class.tagged_with("omg").to_a)
+    end
+
+    it "can search for multiple tags" do
+      included = create(:article, tags: "includeme, please, lol")
+      excluded_partial_match = create(:article, tags: "excluded, please")
+      excluded_no_match = create(:article, tags: "excluded, omg")
+
+      articles = described_class.cached_tagged_with(%w[includeme please])
+
+      expect(articles).to include included
+      expect(articles).not_to include excluded_partial_match
+      expect(articles).not_to include excluded_no_match
+      expect(articles.to_a).to eq described_class.tagged_with(%w[includeme please]).to_a
+    end
+  end
+
+  describe ".cached_tagged_with_any" do
+    it "can search for a single tag" do
+      included = create(:article, tags: "includeme")
+      excluded = create(:article, tags: "lol, nope")
+
+      articles = described_class.cached_tagged_with_any("includeme")
+
+      expect(articles).to include included
+      expect(articles).not_to include excluded
+      expect(articles.to_a).to eq described_class.tagged_with("includeme", any: true).to_a
+    end
+
+    it "can search among multiple tags" do
+      included = [
+        create(:article, tags: "omg, wtf"),
+        create(:article, tags: "omg, lol"),
+      ]
+      excluded = create(:article, tags: "nope, excluded")
+
+      articles = described_class.cached_tagged_with_any("omg")
+      expected = described_class.tagged_with("omg", any: true).to_a
+
+      expect(articles).to include(*included)
+      expect(articles).not_to include excluded
+      expect(articles.to_a).to include(*expected)
+    end
+
+    it "can search for multiple tags" do
+      included = create(:article, tags: "includeme, please, lol")
+      included_partial_match = create(:article, tags: "includeme, omg")
+      excluded_no_match = create(:article, tags: "excluded, omg")
+
+      articles = described_class.cached_tagged_with_any(%w[includeme please])
+      expected = described_class.tagged_with(%w[includeme please], any: true).to_a
+
+      expect(articles).to include included
+      expect(articles).to include included_partial_match
+      expect(articles).not_to include excluded_no_match
+
+      expect(articles.to_a).to include(*expected)
+    end
+  end
+
   context "when callbacks are triggered before save" do
     it "assigns path on save" do
       expect(article.path).to eq("/#{article.username}/#{article.slug}")
@@ -723,25 +877,71 @@ RSpec.describe Article, type: :model do
   end
 
   context "when callbacks are triggered after save" do
-    describe "main image background color" do
-      let(:article) { build(:article, user: user) }
-
-      it "enqueues a job to update the main image background if #dddddd" do
-        article.main_image_background_hex_color = "#dddddd"
-        allow(article).to receive(:update_main_image_background_hex).and_call_original
-        sidekiq_assert_enqueued_with(job: Articles::UpdateMainImageBackgroundHexWorker) do
-          article.save
-        end
-        expect(article).to have_received(:update_main_image_background_hex)
+    describe "article path sanitizing" do
+      it "returns a downcased username when user has uppercase characters" do
+        upcased_user = create(:user, username: "UpcasedUserName")
+        upcased_article = create(:article, user: upcased_user)
+        expect(upcased_article.path).not_to match(/[AZ]+/)
       end
 
-      it "does not enqueue a job to update the main image background if not #dddddd" do
-        article.main_image_background_hex_color = "#fff000"
-        allow(article).to receive(:update_main_image_background_hex).and_call_original
-        sidekiq_assert_no_enqueued_jobs(only: Articles::UpdateMainImageBackgroundHexWorker) do
-          article.save
-        end
-        expect(article).to have_received(:update_main_image_background_hex)
+      it "returns a downcased username when an org slug has uppercase characters" do
+        upcased_org = create(:organization, slug: "UpcasedSlug")
+        upcased_article = create(:article, organization: upcased_org)
+        expect(upcased_article.path).not_to match(/[AZ]+/)
+      end
+    end
+
+    describe "spam" do
+      before do
+        allow(SiteConfig).to receive(:mascot_user_id).and_return(user.id)
+        allow(SiteConfig).to receive(:spam_trigger_terms).and_return(
+          ["yahoomagoo gogo", "testtestetest", "magoo.+magee"],
+        )
+      end
+
+      it "creates vomit reaction if possible spam" do
+        article.body_markdown = article.body_markdown.gsub(article.title, "This post is about Yahoomagoo gogo")
+        article.save
+        expect(Reaction.last.category).to eq("vomit")
+        expect(Reaction.last.user_id).to eq(user.id)
+      end
+
+      it "creates vomit reaction if possible spam based on pattern" do
+        article.body_markdown = article.body_markdown.gsub(article.title, "This post is about magoo to the magee")
+        article.save
+        expect(Reaction.last.category).to eq("vomit")
+        expect(Reaction.last.user_id).to eq(user.id)
+      end
+
+      it "does not suspend user if only single vomit" do
+        article.body_markdown = article.body_markdown.gsub(article.title, "This post is about Yahoomagoo gogo")
+        article.save
+        expect(article.user.suspended?).to be false
+      end
+
+      it "suspends user with 3 comment vomits" do
+        second_article = create(:article, user: article.user)
+        third_article = create(:article, user: article.user)
+        article.body_markdown = article.body_markdown.gsub(article.title, "This post is about Yahoomagoo gogo")
+        second_article.body_markdown = second_article.body_markdown.gsub(second_article.title, "testtestetest")
+        third_article.body_markdown = third_article.body_markdown.gsub(third_article.title, "yahoomagoo gogo")
+
+        article.save
+        second_article.save
+        third_article.save
+        expect(article.user.suspended?).to be true
+        expect(Note.last.reason).to eq "automatic_suspend"
+      end
+
+      it "does not create vomit reaction if does not have matching title" do
+        article.save
+        expect(Reaction.last).to be nil
+      end
+
+      it "does not create vomit reaction if does not have pattern match" do
+        article.body_markdown = article.body_markdown.gsub(article.title, "This post is about magoo to")
+        article.save
+        expect(Reaction.last).to be nil
       end
     end
 
@@ -757,29 +957,6 @@ RSpec.describe Article, type: :model do
         sidekiq_assert_no_enqueued_jobs(only: Articles::ScoreCalcWorker) do
           article.save
         end
-      end
-    end
-
-    describe "detect human language" do
-      let(:language_detector) { instance_double(LanguageDetector) }
-
-      before do
-        allow(LanguageDetector).to receive(:new).and_return(language_detector)
-        allow(language_detector).to receive(:detect)
-      end
-
-      it "calls the human language detector" do
-        article.language = ""
-        article.save
-
-        expect(language_detector).to have_received(:detect)
-      end
-
-      it "does not call the human language detector if there is already a language" do
-        article.language = "en"
-        article.save
-
-        expect(language_detector).not_to have_received(:detect)
       end
     end
 
@@ -817,6 +994,44 @@ RSpec.describe Article, type: :model do
           end
         end
       end
+    end
+  end
+
+  context "when triggers are invoked" do
+    let(:article) { create(:article) }
+
+    before do
+      article.update(body_markdown: "An intense movie")
+    end
+
+    it "sets .reading_list_document on insert" do
+      expect(article.reload.reading_list_document).to be_present
+    end
+
+    it "updates .reading_list_document with body_markdown" do
+      article.update(body_markdown: "Something has changed")
+
+      expect(article.reload.reading_list_document).to include("something")
+    end
+
+    it "updates .reading_list_document with cached_tag_list" do
+      article.update(tag_list: %w[rust python])
+
+      expect(article.reload.reading_list_document).to include("rust")
+    end
+
+    it "updates .reading_list_document with title" do
+      article.update(title: "Synecdoche, Los Angeles")
+
+      expect(article.reload.reading_list_document).to include("angeles")
+    end
+
+    it "removes a previous value from .reading_list_document on update", :aggregate_failures do
+      tag = article.tags.first.name
+      article.update(tag_list: %w[fsharp go])
+
+      expect(article.reload.reading_list_document).not_to include(tag)
+      expect(article.reload.reading_list_document).to include("fsharp")
     end
   end
 
@@ -874,6 +1089,89 @@ RSpec.describe Article, type: :model do
       sidekiq_assert_enqueued_with(job: Search::IndexWorker, args: [described_class.to_s, article.id]) do
         article.touch_by_reaction
       end
+    end
+  end
+
+  describe "co_author_ids_list=" do
+    it "correctly sets co author ids from a comma separated list of ids" do
+      co_author1 = create(:user)
+      co_author2 = create(:user)
+      article.co_author_ids_list = "#{co_author1.id}, #{co_author2.id}"
+      expect(article.co_author_ids).to match_array([co_author1.id, co_author2.id])
+    end
+  end
+
+  describe "#plain_html" do
+    let(:body_markdown) do
+      <<~MD
+        ---
+        title: Test highlight panel
+        published: false
+        ---
+
+        text before
+
+          ```ruby
+          def foo():
+            puts "bar"
+          ```
+
+        text after
+      MD
+    end
+
+    it "doesn't include highlight panel markup" do
+      article = create(:article, body_markdown: body_markdown)
+
+      expect(article.plain_html).to include("text before")
+      expect(article.plain_html).to include("highlight")
+      expect(article.plain_html).not_to include("highlight__panel")
+    end
+  end
+
+  describe "#user_mentions_in_markdown" do
+    before do
+      stub_const("Article::MAX_USER_MENTIONS", 7)
+      stub_const("Article::MAX_USER_MENTION_LIVE_AT", 1.day.ago) # Set live_at date to a time in the past
+    end
+
+    it "is valid with any number of mentions if created before MAX_USER_MENTION_LIVE_AT date" do
+      # Explicitly set created_at date to a time before MAX_USER_MENTION_LIVE_AT
+      article = create(:article, created_at: 3.days.ago)
+
+      article.body_markdown = "hi @#{user.username}! " * (Article::MAX_USER_MENTIONS + 1)
+      expect(article).to be_valid
+    end
+
+    it "is valid with seven or fewer mentions if created after MAX_USER_MENTION_LIVE_AT date" do
+      article.body_markdown = "hi @#{user.username}! " * Article::MAX_USER_MENTIONS
+      expect(article).to be_valid
+    end
+
+    it "is invalid with more than seven mentions if created after MAX_USER_MENTION_LIVE_AT date" do
+      article.body_markdown = "hi @#{user.username}! " * (Article::MAX_USER_MENTIONS + 1)
+      expect(article).not_to be_valid
+      expect(article.errors[:base])
+        .to include("You cannot mention more than #{Article::MAX_USER_MENTIONS} users in a post!")
+    end
+  end
+
+  describe "#followers" do
+    it "returns an array of users who follow the article's author" do
+      following_user = create(:user)
+      following_user.follow(user)
+
+      expect(article.followers.length).to eq(1)
+      expect(article.followers.first.username).to eq(following_user.username)
+    end
+  end
+
+  describe "#update_score" do
+    it "stably sets the correct blackbox values" do
+      create(:reaction, reactable: article, points: 1)
+
+      article.update_score
+      expect { article.update_score }.not_to change { article.reload.hotness_score }
     end
   end
 end

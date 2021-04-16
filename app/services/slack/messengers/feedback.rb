@@ -16,7 +16,7 @@ module Slack
         email: <mailto:%<email>s|%<email>s>
       TEXT
 
-      def initialize(user: nil, type:, category:, reported_url:, message:)
+      def initialize(type:, category:, reported_url:, message:, user: nil)
         @user = user
         @type = type
         @category = category
@@ -24,13 +24,13 @@ module Slack
         @message = message
       end
 
-      def self.call(*args)
-        new(*args).call
+      def self.call(...)
+        new(...).call
       end
 
       def call
         reports_url = URL.url(
-          Rails.application.routes.url_helpers.internal_reports_path,
+          Rails.application.routes.url_helpers.admin_reports_path,
         )
 
         final_message = format(
